@@ -1,17 +1,4 @@
-/*
- * Мапа областей України на LilyGO T-Display (ESP32 + ST7789 1.14", 135x240,
- * тут використовується в альбомній орієнтації 240x135).
- *
- * Кнопка на GPIO0  -> наступна область
- * Кнопка на GPIO35 -> попередня область
- * Обрана область підсвічується білим контуром; повна українська назва
- * друкується в serial-консоль (ESP_LOGI), бо вбудований шрифт 8x8 має лише
- * латиницю і на самому екрані показати кирилицю нічим.
- *
- * Дані меж областей згенеровано офлайн з відкритих геоданих (спрощено
- * алгоритмом Рамера-Дугласа-Пекера і спроєктовано під 240x135 px) — див.
- * ukraine_map_data.h.
- */
+//Мапа областей України
 
 #include <stdbool.h>
 #include <stdlib.h>
@@ -49,7 +36,6 @@ static const char *TAG = "ukraine_map";
 /* ---------------------------------------------------------------------- */
 /* Кольори / framebuffer                                                  */
 /* ---------------------------------------------------------------------- */
-
 static inline uint16_t rgb565(uint8_t r, uint8_t g, uint8_t b)
 {
     return (uint16_t)(((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3));
@@ -225,13 +211,13 @@ static void render_map(uint16_t *fb, int selected)
 {
     fb_clear(fb, swap16(rgb565(10, 12, 22)));
 
-    uint16_t fill_col = swap16(rgb565(200, 200, 200));   /* світло-сірі області */
+    uint16_t fill_col = swap16(rgb565(163, 160, 157));   /* області */
     for (int i = 0; i < MAP_NUM_REGIONS; i++) {
         const map_region_t *r = &map_regions[i];
         fb_fill_polygon(fb, &map_points[r->point_offset], r->point_count, fill_col);
     }
 
-    uint16_t border_col = swap16(rgb565(255, 210, 0));   /* жовті межі областей */
+    uint16_t border_col = swap16(rgb565(90, 138, 69));   /* межі областей */
     for (int i = 0; i < MAP_NUM_REGIONS; i++) {
         const map_region_t *r = &map_regions[i];
         fb_draw_polygon_outline(fb, &map_points[r->point_offset], r->point_count, border_col);
@@ -239,7 +225,7 @@ static void render_map(uint16_t *fb, int selected)
 
     if (selected >= 0 && selected < MAP_NUM_REGIONS) {
         const map_region_t *r = &map_regions[selected];
-        uint16_t hl = swap16(rgb565(255, 40, 40));       /* обрана область - червоний контур */
+        uint16_t hl = swap16(rgb565(255, 40, 40));       /* обрана область */
         fb_draw_polygon_outline(fb, &map_points[r->point_offset], r->point_count, hl);
     }
 }
