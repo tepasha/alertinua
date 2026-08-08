@@ -47,36 +47,85 @@ void fb_fill_polygon(uint16_t *fb, const map_point_t *pts, int n, uint16_t color
     if (n < 3) {
         return;
     }
-    int ymin = 255, ymax = 0;
+
+    // 1. Знаходимо вертикальні межі полігона (ymin, ymax)
+    int ymin = MAP_DISPLAY_H - 1;
+    int ymax = 0;
+
     for (int i = 0; i < n; i++) {
         if (pts[i].y < ymin) ymin = pts[i].y;
         if (pts[i].y > ymax) ymax = pts[i].y;
     }
+
+    // Кліпування по вертикалі (не малюємо за межами екрана)
+    if (ymin < 0) ymin = 0;
+    if (ymax >= MAP_DISPLAY_H) ymax = MAP_DISPLAY_H - 1;
+
+    // 2. Сканування рядок за рядком
     for (int y = ymin; y <= ymax; y++) {
-        int xs[48];
+        int xs[32]; // Масив для X-координат перетинів
         int count = 0;
+
+        // Знаходимо всі перетини ребер полігона з поточним рядком Y
         for (int i = 0; i < n; i++) {
             int j = (i + 1) % n;
-            int y0 = pts[i].y, y1 = pts[j].y;
+            int x0 = pts[i].x, y0 = pts[i].y;
+            int x1 = pts[j].x, y1 = pts[j].y;
+
+            // Пропускаємо горизонтальні ребра
             if (y0 == y1) {
                 continue;
             }
+
+            // Перевіряємо, чи перетинає рядок Y дане ребро
             if ((y >= y0 && y < y1) || (y >= y1 && y < y0)) {
-                float t = (float)(y - y0) / (float)(y1 - y0);
-                int x = pts[i].x + (int)(t * (pts[j].x - pts[i].x));
-                if (count < 48) {
+                // Цілочисельна інтерполяція X без використання float!
+                int x = x0 + (int32_t)(y - y0) * (x1 - x0) / (y1 - y0);
+
+                if (count < 32) {
                     xs[count++] = x;
                 }
             }
         }
-        for (int a = 0; a < count - 1; a++) {
-            for (int b = a + 1; b < count; b++) {
-                if (xs[b] < xs[a]) { int tmp = xs[a]; xs[a] = xs[b]; xs[b] = tmp; }
+
+        if (count < 2) continue;
+
+        // 3. Швидке сортування вставками (Insertion Sort) X-координат за зростанням
+        for (int i = 1; i < count; i++) {
+            int key = xs[i];
+            int j = i - 1;
+            while (j >= 0 && xs[j] > key) {
+                xs[j + 1] = xs[j];
+                j--;
             }
+            xs[j + 1] = key;
         }
+
+        // 4. Заповнення відрізків між парами перетинів
         for (int a = 0; a + 1 < count; a += 2) {
-            for (int x = xs[a]; x <= xs[a + 1]; x++) {
-                fb_set_px(fb, x, y, color_be);
+            int x_start = xs[a];
+            int x_end   = xs[a + 1];
+
+            // Кліпування по горизонталі
+            if (x_start < 0) x_start = 0;
+            if (x_end >= MAP_DISPLAY_W) x_end = MAP_DISPLAY_W - 1;
+
+            if (x_start > x_end) continue;
+
+            // Прямий запис у фреймбуфер без виклику fb_set_px()
+            uint16_t *line_ptr = &fb[y * MAP_DISPLAY_W + x_start];
+            int len = x_end - x_start + 1;
+
+            // Оптимізована заливка по 32 біти (два 16-бітних пікселі одразу)
+            uint32_t pair_color = ((uint32_t)color_be << 16) | color_be;
+            uint32_t *ptr32 = (uint32_t*)line_ptr;
+
+            int pairs = len / 2;
+            for (int k = 0; k < pairs; k++) {
+                ptr32[k] = pair_color;
+            }
+            if (len & 1) {
+                line_ptr[len - 1] = color_be; // залишок якщо непарна довжина
             }
         }
     }
