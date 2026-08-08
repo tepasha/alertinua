@@ -1,5 +1,12 @@
+file(GLOB_RECURSE SRC_SOURCES "*.cpp" "*.c")
+file(GLOB_RECURSE INC_SOURCES "../include/*.cpp" "../include/*.c")
+
 idf_component_register(
-    SRCS "main.c"
-    INCLUDE_DIRS "."
-    REQUIRES driver esp_lcd log
+    SRCS 
+        ${SRC_SOURCES}
+        ${INC_SOURCES}
+    INCLUDE_DIRS 
+        "."
+        "../include"
+        "../include/map"
 )
