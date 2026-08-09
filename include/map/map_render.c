@@ -28,17 +28,79 @@ void fb_clear(uint16_t *fb, uint16_t color_be)
 
 void fb_draw_line(uint16_t *fb, int x0, int y0, int x1, int y1, uint16_t color_be)
 {
-    int dx = abs(x1 - x0), sx = x0 < x1 ? 1 : -1;
-    int dy = -abs(y1 - y0), sy = y0 < y1 ? 1 : -1;
-    int err = dx + dy;
-    while (1) {
-        fb_set_px(fb, x0, y0, color_be);
-        if (x0 == x1 && y0 == y1) {
-            break;
+    // 1. Повне кліпування: якщо лінія гарантовано за межами екрана — ігноруємо
+    if ((x0 < 0 && x1 < 0) || (x0 >= MAP_DISPLAY_W && x1 >= MAP_DISPLAY_W) ||
+        (y0 < 0 && y1 < 0) || (y0 >= MAP_DISPLAY_H && y1 >= MAP_DISPLAY_H)) {
+        return;
+    }
+
+    // 2. Оптимізація для строго вертикальних ліній (дуже часті в полігонах)
+    if (x0 == x1) {
+        int y_start = y0 < y1 ? y0 : y1;
+        int y_end   = y0 < y1 ? y1 : y0;
+
+        if (y_start < 0) y_start = 0;
+        if (y_end >= MAP_DISPLAY_H) y_end = MAP_DISPLAY_H - 1;
+        if (x0 < 0 || x0 >= MAP_DISPLAY_W) return;
+
+        uint16_t *ptr = &fb[y_start * MAP_DISPLAY_W + x0];
+        for (int y = y_start; y <= y_end; y++) {
+            *ptr = color_be;
+            ptr += MAP_DISPLAY_W; // Перехід на наступний рядок додаванням ширини
         }
+        return;
+    }
+
+    // 3. Оптимізація для строго горизонтальних ліній
+    if (y0 == y1) {
+        int x_start = x0 < x1 ? x0 : x1;
+        int x_end   = x0 < x1 ? x1 : x0;
+
+        if (x_start < 0) x_start = 0;
+        if (x_end >= MAP_DISPLAY_W) x_end = MAP_DISPLAY_W - 1;
+        if (y0 < 0 || y0 >= MAP_DISPLAY_H) return;
+
+        uint16_t *ptr = &fb[y0 * MAP_DISPLAY_W + x_start];
+        int len = x_end - x_start + 1;
+        for (int i = 0; i < len; i++) {
+            ptr[i] = color_be;
+        }
+        return;
+    }
+
+    // 4. Оптимізований алгоритм Брезенхема для діагональних ліній
+    int dx = abs(x1 - x0);
+    int sx = x0 < x1 ? 1 : -1;
+    int dy = -abs(y1 - y0);
+    int sy = y0 < y1 ? 1 : -1;
+    int err = dx + dy;
+
+    // Вказівник на поточну позицію пікселя
+    uint16_t *ptr = &fb[y0 * MAP_DISPLAY_W + x0];
+    int y_stride = sy * MAP_DISPLAY_W; // Крок у байтах/елементах при зміні Y
+
+    int curr_x = x0;
+    int curr_y = y0;
+
+    while (1) {
+        // Перевірка меж тільки поточних координат
+        if (curr_x >= 0 && curr_x < MAP_DISPLAY_W && curr_y >= 0 && curr_y < MAP_DISPLAY_H) {
+            *ptr = color_be;
+        }
+
+        if (curr_x == x1 && curr_y == y1) break;
+
         int e2 = 2 * err;
-        if (e2 >= dy) { err += dy; x0 += sx; }
-        if (e2 <= dx) { err += dx; y0 += sy; }
+        if (e2 >= dy) {
+            err += dy;
+            curr_x += sx;
+            ptr += sx; // Зсув вказівника по горизонталі на ±1
+        }
+        if (e2 <= dx) {
+            err += dx;
+            curr_y += sy;
+            ptr += y_stride; // Зсув вказівника по вертикалі на ±MAP_DISPLAY_W
+        }
     }
 }
 
@@ -133,6 +195,8 @@ void fb_fill_polygon(uint16_t *fb, const map_point_t *pts, int n, uint16_t color
 
 void fb_draw_polygon_outline(uint16_t *fb, const map_point_t *pts, int n, uint16_t color_be)
 {
+   if (n < 2) return;
+
     for (int i = 0; i < n; i++) {
         int j = (i + 1) % n;
         fb_draw_line(fb, pts[i].x, pts[i].y, pts[j].x, pts[j].y, color_be);

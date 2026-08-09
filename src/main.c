@@ -28,8 +28,6 @@ static const char *TAG = "ukraine_map";
 #define BTN_NEXT GPIO_NUM_0   /* кнопка "BOOT" */
 #define BTN_PREV GPIO_NUM_35  /* друга кнопка, вхід без внутр. підтяжки */
 
-#define DEBOUNCE_TIME_MS 80
-
 #define LCD_HOST      SPI2_HOST
 #define LCD_PCLK_HZ   (20 * 1000 * 1000)
 
@@ -60,7 +58,7 @@ static esp_lcd_panel_handle_t display_init(void)
         .lcd_cmd_bits = 8,
         .lcd_param_bits = 8,
         .spi_mode = 0,
-        .trans_queue_depth = 10,
+        .trans_queue_depth = 10, // <--- Достатньо для асинхронної передачі
     };
     ESP_ERROR_CHECK(esp_lcd_new_panel_io_spi((esp_lcd_spi_bus_handle_t)LCD_HOST, &io_config, &io_handle));
 
@@ -74,7 +72,7 @@ static esp_lcd_panel_handle_t display_init(void)
 
     ESP_ERROR_CHECK(esp_lcd_panel_swap_xy(panel_handle, true));
     ESP_ERROR_CHECK(esp_lcd_panel_mirror(panel_handle, true, false));
-    ESP_ERROR_CHECK(esp_lcd_panel_set_gap(panel_handle, 40, 52));
+    ESP_ERROR_CHECK(esp_lcd_panel_set_gap(panel_handle, 40, 50));
 
     ESP_ERROR_CHECK(esp_lcd_panel_reset(panel_handle));
     ESP_ERROR_CHECK(esp_lcd_panel_init(panel_handle));
@@ -106,19 +104,26 @@ void app_main(void)
     buttons_init();
     esp_lcd_panel_handle_t panel = display_init();
 
-    uint16_t *fb = heap_caps_malloc(MAP_DISPLAY_W * MAP_DISPLAY_H * sizeof(uint16_t), MALLOC_CAP_DMA);
-    if (fb == NULL) {
-        ESP_LOGE(TAG, "Помилка виділення пам'яті під FB");
+    size_t fb_size = MAP_DISPLAY_W * MAP_DISPLAY_H * sizeof(uint16_t);
+
+    // Виділяємо ДВА буфери в оперативній пам'яті з підтримкою DMA
+    uint16_t *fb0 = heap_caps_malloc(fb_size, MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL);
+    uint16_t *fb1 = heap_caps_malloc(fb_size, MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL);
+
+    if (fb0 == NULL || fb1 == NULL) {
+        ESP_LOGE(TAG, "Не вдалось виділити подвійний фреймбуфер DMA!");
         return;
     }
 
+    uint16_t *current_fb = fb0;
     int selected = -1;
-    render_map(fb, selected);
-    esp_lcd_panel_draw_bitmap(panel, 0, 0, MAP_DISPLAY_W, MAP_DISPLAY_H, fb);
 
-    bool prev_next_state = true; // true = кнопка відпущена (HIGH)
+    // Перший рендер
+    render_map(current_fb, selected);
+    esp_lcd_panel_draw_bitmap(panel, 0, 0, MAP_DISPLAY_W, MAP_DISPLAY_H, current_fb);
+
+    bool prev_next_state = true;
     bool prev_prev_state = true;
-    
     TickType_t last_next_press = 0;
     TickType_t last_prev_press = 0;
 
@@ -128,18 +133,16 @@ void app_main(void)
         bool current_prev = gpio_get_level(BTN_PREV);
         bool changed = false;
 
-        // Перевірка кнопки NEXT (GPIO0): фронт спаду (HIGH -> LOW) + перевірка часу
         if (prev_next_state && !current_next) {
-            if ((now - last_next_press) > pdMS_TO_TICKS(DEBOUNCE_TIME_MS)) {
+            if ((now - last_next_press) > pdMS_TO_TICKS(80)) {
                 selected = (selected + 1) % MAP_NUM_REGIONS;
                 changed = true;
                 last_next_press = now;
             }
         }
 
-        // Перевірка кнопки PREV (GPIO35): фронт спаду (HIGH -> LOW) + перевірка часу
         if (prev_prev_state && !current_prev) {
-            if ((now - last_prev_press) > pdMS_TO_TICKS(DEBOUNCE_TIME_MS)) {
+            if ((now - last_prev_press) > pdMS_TO_TICKS(80)) {
                 selected = (selected - 1 + MAP_NUM_REGIONS) % MAP_NUM_REGIONS;
                 changed = true;
                 last_prev_press = now;
@@ -147,16 +150,22 @@ void app_main(void)
         }
 
         if (changed) {
-            render_map(fb, selected);
-            esp_lcd_panel_draw_bitmap(panel, 0, 0, MAP_DISPLAY_W, MAP_DISPLAY_H, fb);
+            // Перемикаємо вказівник на активний буфер
+            current_fb = (current_fb == fb0) ? fb1 : fb0;
+
+            // Готуємо новий кадр у фоновому буфері
+            render_map(current_fb, selected);
+
+            // Надсилаємо новий кадр по SPI через DMA
+            esp_lcd_panel_draw_bitmap(panel, 0, 0, MAP_DISPLAY_W, MAP_DISPLAY_H, current_fb);
+
             const map_region_t *r = &map_regions[selected];
-            ESP_LOGI(TAG, "[%d/%d] %s (точок контуру: %d)",
-                     selected + 1, MAP_NUM_REGIONS, r->name, r->point_count);
+            ESP_LOGI(TAG, "[%d/%d] %s", selected + 1, MAP_NUM_REGIONS, r->name);
         }
 
         prev_next_state = current_next;
         prev_prev_state = current_prev;
 
-        vTaskDelay(pdMS_TO_TICKS(10)); // Зменшено квант опитування для швидкого відгуку
+        vTaskDelay(pdMS_TO_TICKS(10));
     }
 }
