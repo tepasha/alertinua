@@ -1,106 +1,165 @@
-#include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
-#include <curl/curl.h>
+#include <sys/param.h>
+#include <inttypes.h>
 
-#include "scraping.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "freertos/event_groups.h"
 
-struct ApiResponse {
-    char *data;
-    size_t size;
-};
+#include "esp_wifi.h"
+#include "esp_event.h"
+#include "esp_netif.h"
+#include "esp_log.h"
+#include "nvs_flash.h"
 
-static size_t write_callback(void *contents, size_t size, size_t nmemb, void *userp) {
-    size_t chunk_size = size * nmemb;
-    struct ApiResponse *resp = (struct ApiResponse *)userp;
- 
-    char *new_data = realloc(resp->data, resp->size + chunk_size + 1);
-    if (!new_data) {
-        fprintf(stderr, "Out of memory while receiving response\n");
-        return 0;
+#include "esp_http_client.h"
+#include "esp_crt_bundle.h"
+
+#define WIFI_SSID      "your-wifi-ssid"
+#define WIFI_PASSWORD  "your-wifi-password"
+#define WIFI_MAX_RETRY 5
+
+#define API_URL       "https://api.example.com/v1/resource"
+#define BEARER_TOKEN  "your-bearer-token-here"
+
+#define MAX_HTTP_OUTPUT_BUFFER 2048
+
+static const char *TAG = "api_fetch";
+
+static EventGroupHandle_t s_wifi_event_group;
+#define WIFI_CONNECTED_BIT BIT0
+#define WIFI_FAIL_BIT      BIT1
+static int s_retry_num = 0;
+
+static void wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t event_id, void *event_data) {
+    if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START) {
+        esp_wifi_connect();
+    } else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
+        if (s_retry_num < WIFI_MAX_RETRY) {
+            esp_wifi_connect();
+            s_retry_num++;
+            ESP_LOGI(TAG, "retrying WiFi connection (%d/%d)", s_retry_num, WIFI_MAX_RETRY);
+        } else {
+            xEventGroupSetBits(s_wifi_event_group, WIFI_FAIL_BIT);
+        }
+    } else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
+        ip_event_got_ip_t *event = (ip_event_got_ip_t *)event_data;
+        ESP_LOGI(TAG, "got IP: " IPSTR, IP2STR(&event->ip_info.ip));
+        s_retry_num = 0;
+        xEventGroupSetBits(s_wifi_event_group, WIFI_CONNECTED_BIT);
     }
- 
-    resp->data = new_data;
-    memcpy(&(resp->data[resp->size]), contents, chunk_size);
-    resp->size += chunk_size;
-    resp->data[resp->size] = '\0';
- 
-    return chunk_size;
 }
 
-char *api_fetch_bearer_auth(const char *url, const char *bearer_token, long *out_status) {
-    CURL *curl = curl_easy_init();
-    if (!curl) {
-        fprintf(stderr, "Failed to initialize curl\n");
-        return NULL;
-    }
- 
-    struct ApiResponse resp;
-    resp.data = malloc(1);
-    resp.size = 0;
-    if (!resp.data) {
-        fprintf(stderr, "Out of memory\n");
-        curl_easy_cleanup(curl);
-        return NULL;
-    }
-    resp.data[0] = '\0';
- 
-    char auth_header[2048];
-    snprintf(auth_header, sizeof(auth_header), "Authorization: Bearer %s", bearer_token);
- 
-    struct curl_slist *headers = NULL;
-    headers = curl_slist_append(headers, auth_header);
-    headers = curl_slist_append(headers, "Accept: application/json");
- 
-    curl_easy_setopt(curl, CURLOPT_URL, url);
-    curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
-    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_callback);
-    curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&resp);
-    curl_easy_setopt(curl, CURLOPT_USERAGENT, "c-api-client/1.0");
-    curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
-    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 30L);
-    curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 10L);
-    curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 1L);
-    curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 2L);
- 
-    CURLcode res = curl_easy_perform(curl);
- 
-    if (res != CURLE_OK) {
-        fprintf(stderr, "Request failed: %s\n", curl_easy_strerror(res));
-        free(resp.data);
-        resp.data = NULL;
-    } else if (out_status) {
-        curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, out_status);
-    }
- 
-    curl_slist_free_all(headers);
-    curl_easy_cleanup(curl);
- 
-    return resp.data;
+static bool wifi_connect_sta(void) {
+    s_wifi_event_group = xEventGroupCreate();
+
+    ESP_ERROR_CHECK(esp_netif_init());
+    ESP_ERROR_CHECK(esp_event_loop_create_default());
+    esp_netif_create_default_wifi_sta();
+
+    wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
+    ESP_ERROR_CHECK(esp_wifi_init(&cfg));
+
+    esp_event_handler_instance_t instance_any_id;
+    esp_event_handler_instance_t instance_got_ip;
+    ESP_ERROR_CHECK(esp_event_handler_instance_register(WIFI_EVENT, ESP_EVENT_ANY_ID, &wifi_event_handler, NULL, &instance_any_id));
+    ESP_ERROR_CHECK(esp_event_handler_instance_register(IP_EVENT, IP_EVENT_STA_GOT_IP, &wifi_event_handler, NULL, &instance_got_ip));
+
+    wifi_config_t wifi_config = {
+        .sta = {
+            .ssid = WIFI_SSID,
+            .password = WIFI_PASSWORD,
+            .threshold.authmode = WIFI_AUTH_WPA2_PSK,
+        },
+    };
+
+    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
+    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_config));
+    ESP_ERROR_CHECK(esp_wifi_start());
+
+    ESP_LOGI(TAG, "connecting to WiFi \"%s\"...", WIFI_SSID);
+
+    EventBits_t bits = xEventGroupWaitBits(s_wifi_event_group, WIFI_CONNECTED_BIT | WIFI_FAIL_BIT, pdFALSE, pdFALSE, portMAX_DELAY);
+
+    return (bits & WIFI_CONNECTED_BIT) != 0;
 }
- 
-void get_api_data() {
-    const char *api_url = "https://api.example.com/v1/resource";
-    const char *token   = getenv("API_BEARER_TOKEN");
- 
-    if (!token) {
-        fprintf(stderr, "Set the API_BEARER_TOKEN environment variable first.\n");
-        return 1;
+
+static esp_err_t http_event_handler(esp_http_client_event_t *evt) {
+    static int output_len = 0;
+
+    switch (evt->event_id) {
+        case HTTP_EVENT_ON_DATA:
+            if (output_len == 0 && evt->user_data) {
+                memset(evt->user_data, 0, MAX_HTTP_OUTPUT_BUFFER);
+            }
+            if (!esp_http_client_is_chunked_response(evt->client) && evt->user_data) {
+                int copy_len = MIN(evt->data_len, (MAX_HTTP_OUTPUT_BUFFER - 1 - output_len));
+                if (copy_len > 0) {
+                    memcpy((char *)evt->user_data + output_len, evt->data, copy_len);
+                    output_len += copy_len;
+                }
+            }
+            break;
+        case HTTP_EVENT_ON_FINISH:
+        case HTTP_EVENT_DISCONNECTED:
+            output_len = 0;
+            break;
+        default:
+            break;
     }
- 
-    curl_global_init(CURL_GLOBAL_ALL);
- 
-    long status = 0;
-    char *body = api_fetch_bearer_auth(api_url, token, &status);
- 
-    if (body) {
-        printf("HTTP status: %ld\n", status);
-        printf("Response body:\n%s\n", body);
-        free(body);
+    return ESP_OK;
+}
+
+static int api_fetch_bearer_auth(const char *url, const char *token, char *outBuf, size_t outBufSize) {
+    esp_http_client_config_t config = {
+        .url = url,
+        .event_handler = http_event_handler,
+        .user_data = outBuf,
+        .crt_bundle_attach = esp_crt_bundle_attach, // verify TLS against the bundled public CAs
+        .timeout_ms = 10000,
+    };
+
+    esp_http_client_handle_t client = esp_http_client_init(&config);
+
+    char auth_header[1024];
+    snprintf(auth_header, sizeof(auth_header), "Bearer %s", token);
+    esp_http_client_set_header(client, "Authorization", auth_header);
+    esp_http_client_set_header(client, "Accept", "application/json");
+
+    esp_err_t err = esp_http_client_perform(client);
+
+    int status = -1;
+    if (err == ESP_OK) {
+        status = esp_http_client_get_status_code(client);
+        ESP_LOGI(TAG, "HTTP status: %d, content-length: %" PRId64, status, esp_http_client_get_content_length(client));
     } else {
-        fprintf(stderr, "Request failed.\n");
+        ESP_LOGE(TAG, "Request failed: %s", esp_err_to_name(err));
     }
- 
-    curl_global_cleanup();
-    return 0;
+
+    esp_http_client_cleanup(client);
+    return status;
 }
+
+void get_api(void) {
+    esp_err_t ret = nvs_flash_init(); // required by WiFi for calibration/config storage
+    if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+        ESP_ERROR_CHECK(nvs_flash_erase());
+        ret = nvs_flash_init();
+    }
+    ESP_ERROR_CHECK(ret);
+
+    if (!wifi_connect_sta()) {
+        ESP_LOGE(TAG, "Failed to connect to WiFi, giving up");
+        return;
+    }
+
+    static char response_body[MAX_HTTP_OUTPUT_BUFFER];
+    int status = api_fetch_bearer_auth(API_URL, BEARER_TOKEN, response_body, sizeof(response_body));
+
+    if (status >= 200 && status < 300) {
+        ESP_LOGI(TAG, "Response body:\n%s", response_body);
+    } else {
+        ESP_LOGE(TAG, "Fetch failed, status: %d", status);
+    }
+}
+\

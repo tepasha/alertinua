@@ -1,8 +1,10 @@
 #ifndef SCRAPING_H
 #define SCRAPING_H
 
-static size_t write_callback(void *contents, size_t size, size_t nmemb, void *userp);
-char *api_fetch_bearer_auth(const char *url, const char *bearer_token, long *out_status);
-void get_api_data();
+static void wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t event_id, void *event_data);
+static bool wifi_connect_sta(void);
+static esp_err_t http_event_handler(esp_http_client_event_t *evt);
+static int api_fetch_bearer_auth(const char *url, const char *token, char *outBuf, size_t outBufSize);
+void get_api(void);
 
 #endif // SCRAPING_H
