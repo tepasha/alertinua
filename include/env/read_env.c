@@ -44,15 +44,15 @@ void load_env(const char *filename) {
 }
 
 char *read_env_var(const char *var_name) {
-    // 1. Load the file
-    load_env(".env");
+    load_env("../../.env");
 
-    // 2. Fetch the variable safely
-    const char *db_user = getenv("DB_USER");
+    const char *token = getenv("TOKEN");
     
-    if (db_user) {
-        printf("DB_USER: %s\n", db_user);
+    if (token) {
+        printf("TOKEN: %s\n", token);
+        return strdup(token);
     } else {
-        printf("DB_USER is not set.\n");
+        printf("TOKEN is not set.\n");
     }
+    return NULL;
 }

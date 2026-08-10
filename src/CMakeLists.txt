@@ -9,4 +9,5 @@ idf_component_register(
         "."
         "../include"
         "../include/map"
+        "../include/env"
 )

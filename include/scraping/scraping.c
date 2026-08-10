@@ -162,4 +162,3 @@ void get_api(void) {
         ESP_LOGE(TAG, "Fetch failed, status: %d", status);
     }
 }
-\

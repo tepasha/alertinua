@@ -15,6 +15,7 @@
 
 #include "ukraine_map_data.h"
 #include "map_render.h"
+#include "read_env.h"
 
 static const char *TAG = "ukraine_map";
 
@@ -102,6 +103,9 @@ static void buttons_init(void)
 void app_main(void)
 {
     buttons_init();
+
+    char *token = read_env_var("TOKEN");  // Читаємо змінну середовища з .env файлу
+
     esp_lcd_panel_handle_t panel = display_init();
 
     size_t fb_size = MAP_DISPLAY_W * MAP_DISPLAY_H * sizeof(uint16_t);
