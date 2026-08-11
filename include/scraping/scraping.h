@@ -1,6 +1,9 @@
 #ifndef SCRAPING_H
 #define SCRAPING_H
 
+#include "esp_event.h"
+#include "esp_http_client.h"
+
 static void wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t event_id, void *event_data);
 static bool wifi_connect_sta(void);
 static esp_err_t http_event_handler(esp_http_client_event_t *evt);

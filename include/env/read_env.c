@@ -13,26 +13,22 @@ void load_env(const char *filename) {
 
     char line[MAX_LINE_LEN];
     while (fgets(line, sizeof(line), file)) {
-        // Strip trailing newline characters
+        
         line[strcspn(line, "\r\n")] = 0;
 
-        // Skip comments and empty lines
         if (line[0] == '#' || line[0] == '\0') {
             continue;
         }
 
-        // Find the delimiter
         char *delimiter = strchr(line, '=');
         if (!delimiter) {
             continue; 
         }
 
-        // Split line into key and value
         *delimiter = '\0';
         char *key = line;
         char *value = delimiter + 1;
 
-        // Load into environment variables (overwrite if exists)
         #ifdef _WIN32
             _putenv_s(key, value);
         #else

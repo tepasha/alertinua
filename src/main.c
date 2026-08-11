@@ -13,11 +13,18 @@
 #include "esp_lcd_panel_vendor.h"
 #include "esp_log.h"
 
-#include "ukraine_map_data.h"
 #include "map_render.h"
 #include "read_env.h"
 
-static const char *TAG = "ukraine_map";
+#include "esp_log.h"
+#include "nvs.h"
+#include "nvs_flash.h"
+ 
+#include "wifi_manager.h"
+#include "button.h"
+#include "scraping.h"
+
+static const char *TAG = "main";
 
 #define PIN_MOSI GPIO_NUM_19
 #define PIN_SCLK GPIO_NUM_18
@@ -26,11 +33,20 @@ static const char *TAG = "ukraine_map";
 #define PIN_RST  GPIO_NUM_23
 #define PIN_BL   GPIO_NUM_4
 
-#define BTN_NEXT GPIO_NUM_0   /* кнопка "BOOT" */
-#define BTN_PREV GPIO_NUM_35  /* друга кнопка, вхід без внутр. підтяжки */
+// ---- API config ----
+#define API_URL       "https://api.example.com/v1/resource"
+#define BEARER_TOKEN  "your-bearer-token-here"
+ 
+// ---- Setup button ----
+#define SETUP_BUTTON_GPIO 0     // BOOT button on most ESP32 devkits
+#define LONG_PRESS_MS     3000  // hold for 3s to enter WiFi setup
 
 #define LCD_HOST      SPI2_HOST
 #define LCD_PCLK_HZ   (20 * 1000 * 1000)
+
+static void on_setup_button_long_press(void) {
+    wifi_manager_start_provisioning();
+}
 
 static esp_lcd_panel_handle_t display_init(void)
 {
@@ -84,27 +100,35 @@ static esp_lcd_panel_handle_t display_init(void)
     return panel_handle;
 }
 
-static void buttons_init(void)
-{
-    gpio_config_t next_cfg = {
-        .pin_bit_mask = 1ULL << BTN_NEXT,
-        .mode = GPIO_MODE_INPUT,
-        .pull_up_en = GPIO_PULLUP_ENABLE,
-    };
-    gpio_config(&next_cfg);
-
-    gpio_config_t prev_cfg = {
-        .pin_bit_mask = 1ULL << BTN_PREV,
-        .mode = GPIO_MODE_INPUT,
-    };
-    gpio_config(&prev_cfg);
-}
-
 void app_main(void)
 {
-    buttons_init();
+    //wifi and api fetch
+    esp_err_t ret = nvs_flash_init(); // required by WiFi and by wifi_creds
+    if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+        ESP_ERROR_CHECK(nvs_flash_erase());
+        ret = nvs_flash_init();
+    }
+    ESP_ERROR_CHECK(ret);
 
-    char *token = read_env_var("TOKEN");  // Читаємо змінну середовища з .env файлу
+    button_start_long_press_watch(SETUP_BUTTON_GPIO, LONG_PRESS_MS, on_setup_button_long_press);
+ 
+    if (!wifi_manager_connect_sta()) {
+        ESP_LOGE(TAG, "Failed to connect to WiFi. Hold the setup button for %d s to reconfigure.", LONG_PRESS_MS / 1000);
+        return; // button_task keeps running in the background regardless
+    }
+ 
+    // static char response_body[2048];
+    // int status = api_fetch_bearer_auth(API_URL, BEARER_TOKEN, response_body, sizeof(response_body));
+ 
+    // if (status >= 200 && status < 300) {
+    //     ESP_LOGI(TAG, "Response body:\n%s", response_body);
+    // } else {
+    //     ESP_LOGE(TAG, "Fetch failed, status: %d", status);
+    // }
+    //end wifi and api fetch
+
+    // read token from .env file
+    // char *token = read_env_var("TOKEN");  // Читаємо змінну середовища з .env файлу
 
     esp_lcd_panel_handle_t panel = display_init();
 
@@ -122,54 +146,49 @@ void app_main(void)
     uint16_t *current_fb = fb0;
     int selected = -1;
 
-    // Перший рендер
+    // рендер
     render_map(current_fb, selected);
     esp_lcd_panel_draw_bitmap(panel, 0, 0, MAP_DISPLAY_W, MAP_DISPLAY_H, current_fb);
 
-    bool prev_next_state = true;
-    bool prev_prev_state = true;
-    TickType_t last_next_press = 0;
-    TickType_t last_prev_press = 0;
-
     while (1) {
-        TickType_t now = xTaskGetTickCount();
-        bool current_next = gpio_get_level(BTN_NEXT);
-        bool current_prev = gpio_get_level(BTN_PREV);
-        bool changed = false;
 
-        if (prev_next_state && !current_next) {
-            if ((now - last_next_press) > pdMS_TO_TICKS(80)) {
-                selected = (selected + 1) % MAP_NUM_REGIONS;
-                changed = true;
-                last_next_press = now;
-            }
-        }
+        // bool current_next = gpio_get_level(BTN_NEXT);
+        // bool current_prev = gpio_get_level(BTN_PREV);
+        // bool changed = false;
 
-        if (prev_prev_state && !current_prev) {
-            if ((now - last_prev_press) > pdMS_TO_TICKS(80)) {
-                selected = (selected - 1 + MAP_NUM_REGIONS) % MAP_NUM_REGIONS;
-                changed = true;
-                last_prev_press = now;
-            }
-        }
+        // if (prev_next_state && !current_next) {
+        //     if ((now - last_next_press) > pdMS_TO_TICKS(80)) {
+        //         selected = (selected + 1) % MAP_NUM_REGIONS;
+        //         changed = true;
+        //         last_next_press = now;
+        //     }
+        // }
 
-        if (changed) {
-            // Перемикаємо вказівник на активний буфер
-            current_fb = (current_fb == fb0) ? fb1 : fb0;
+        // if (prev_prev_state && !current_prev) {
+        //     if ((now - last_prev_press) > pdMS_TO_TICKS(80)) {
+        //         selected = (selected - 1 + MAP_NUM_REGIONS) % MAP_NUM_REGIONS;
+        //         changed = true;
+        //         last_prev_press = now;
+        //     }
+        // }
 
-            // Готуємо новий кадр у фоновому буфері
-            render_map(current_fb, selected);
+        // if (changed) {
+        //     // Перемикаємо вказівник на активний буфер
+        //     current_fb = (current_fb == fb0) ? fb1 : fb0;
 
-            // Надсилаємо новий кадр по SPI через DMA
-            esp_lcd_panel_draw_bitmap(panel, 0, 0, MAP_DISPLAY_W, MAP_DISPLAY_H, current_fb);
+        //     // Готуємо новий кадр у фоновому буфері
+        //     render_map(current_fb, selected);
 
-            const map_region_t *r = &map_regions[selected];
-            ESP_LOGI(TAG, "[%d/%d] %s", selected + 1, MAP_NUM_REGIONS, r->name);
-        }
+        //     // Надсилаємо новий кадр по SPI через DMA
+        //     esp_lcd_panel_draw_bitmap(panel, 0, 0, MAP_DISPLAY_W, MAP_DISPLAY_H, current_fb);
 
-        prev_next_state = current_next;
-        prev_prev_state = current_prev;
+        //     const map_region_t *r = &map_regions[selected];
+        //     ESP_LOGI(TAG, "[%d/%d] %s", selected + 1, MAP_NUM_REGIONS, r->name);
+        // }
 
-        vTaskDelay(pdMS_TO_TICKS(10));
+        // prev_next_state = current_next;
+        // prev_prev_state = current_prev;
+
+        // vTaskDelay(pdMS_TO_TICKS(10));
     }
 }

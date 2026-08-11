@@ -24,7 +24,7 @@
 
 #define MAX_HTTP_OUTPUT_BUFFER 2048
 
-static const char *TAG = "api_fetch";
+static const char *TAG = "scraping";
 
 static EventGroupHandle_t s_wifi_event_group;
 #define WIFI_CONNECTED_BIT BIT0
