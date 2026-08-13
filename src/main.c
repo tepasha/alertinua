@@ -113,26 +113,26 @@ void app_main(void)
              MAP_NUM_REGIONS, MAP_NUM_POINTS);
 
     // read token from .env file
-    ESP_LOGI(TAG, "Read API: %s, Token: %s", ALERT_API, ALERT_TOKEN);
+    //ESP_LOGI(TAG, "Read API: %s, Token: %s", ALERT_API, ALERT_TOKEN);
 
     //wifi
-    // esp_err_t ret = nvs_flash_init(); // required by WiFi and by wifi_creds
-    // if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
-    //     ESP_ERROR_CHECK(nvs_flash_erase());
-    //     ret = nvs_flash_init();
-    // }
-    // ESP_ERROR_CHECK(ret);
+    esp_err_t ret = nvs_flash_init(); // required by WiFi and by wifi_creds
+    if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+        ESP_ERROR_CHECK(nvs_flash_erase());
+        ret = nvs_flash_init();
+    }
+    ESP_ERROR_CHECK(ret);
 
-    // button_start_long_press_watch(SETUP_BUTTON_GPIO, LONG_PRESS_MS, on_setup_button_long_press);
+    button_start_long_press_watch(SETUP_BUTTON_GPIO, LONG_PRESS_MS, on_setup_button_long_press);
  
-    // if (!wifi_manager_connect_sta()) {
-    //     ESP_LOGE(TAG, "Failed to connect to WiFi. Hold the setup button for %d s to reconfigure.", LONG_PRESS_MS / 1000);
-    //     return; // button_task keeps running in the background regardless
-    // }
+    if (!wifi_manager_connect_sta()) {
+        ESP_LOGE(TAG, "Failed to connect to WiFi. Hold the setup button for %d s to reconfigure.", LONG_PRESS_MS / 1000);
+        return; // button_task keeps running in the background regardless
+    }
 
     // scraping
     // static char response_body[2048];
-    // int status = api_fetch_bearer_auth(API_URL, BEARER_TOKEN, response_body, sizeof(response_body));
+    // int status = api_fetch_bearer_auth(ALERT_API, ALERT_TOKEN, response_body, sizeof(response_body));
  
     // if (status >= 200 && status < 300) {
     //     ESP_LOGI(TAG, "Response body:\n%s", response_body);
