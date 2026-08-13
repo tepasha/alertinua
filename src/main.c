@@ -15,7 +15,6 @@
 
 #include "map_render.h"
 #include "ukraine_map_data.h"
-#include "read_env.h"
 
 #include "esp_log.h"
 #include "nvs.h"
@@ -110,25 +109,27 @@ void app_main(void)
  
     render_map(fb, -1);
     ESP_ERROR_CHECK(esp_lcd_panel_draw_bitmap(panel, 0, 0, MAP_DISPLAY_W, MAP_DISPLAY_H, fb));
- 
     ESP_LOGI(TAG, "Мапу областей України намальовано: %d областей, %d точок меж.",
              MAP_NUM_REGIONS, MAP_NUM_POINTS);
 
-    //wifi
-    esp_err_t ret = nvs_flash_init(); // required by WiFi and by wifi_creds
-    if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
-        ESP_ERROR_CHECK(nvs_flash_erase());
-        ret = nvs_flash_init();
-    }
-    ESP_ERROR_CHECK(ret);
+    // read token from .env file
+    ESP_LOGI(TAG, "Read API: %s, Token: %s", ALERT_API, ALERT_TOKEN);
 
-    button_start_long_press_watch(SETUP_BUTTON_GPIO, LONG_PRESS_MS, on_setup_button_long_press);
+    //wifi
+    // esp_err_t ret = nvs_flash_init(); // required by WiFi and by wifi_creds
+    // if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+    //     ESP_ERROR_CHECK(nvs_flash_erase());
+    //     ret = nvs_flash_init();
+    // }
+    // ESP_ERROR_CHECK(ret);
+
+    // button_start_long_press_watch(SETUP_BUTTON_GPIO, LONG_PRESS_MS, on_setup_button_long_press);
  
-    if (!wifi_manager_connect_sta()) {
-        ESP_LOGE(TAG, "Failed to connect to WiFi. Hold the setup button for %d s to reconfigure.", LONG_PRESS_MS / 1000);
-        return; // button_task keeps running in the background regardless
-    }
- 
+    // if (!wifi_manager_connect_sta()) {
+    //     ESP_LOGE(TAG, "Failed to connect to WiFi. Hold the setup button for %d s to reconfigure.", LONG_PRESS_MS / 1000);
+    //     return; // button_task keeps running in the background regardless
+    // }
+
     // scraping
     // static char response_body[2048];
     // int status = api_fetch_bearer_auth(API_URL, BEARER_TOKEN, response_body, sizeof(response_body));
@@ -139,7 +140,4 @@ void app_main(void)
     //     ESP_LOGE(TAG, "Fetch failed, status: %d", status);
     // }
     //end wifi and api fetch
-
-    // read token from .env file
-    // char *token = read_env_var("TOKEN");  // Читаємо змінну середовища з .env файлу
 }
