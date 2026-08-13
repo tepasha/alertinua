@@ -1,4 +1,4 @@
-#ifndef WIFI_CREDS_H
+#pragma once
 
 #include "esp_err.h"
 
@@ -7,5 +7,3 @@
 
 esp_err_t wifi_creds_load(char *ssid, char *password);
 esp_err_t wifi_creds_save(const char *ssid, const char *password);
-
-#endif // WIFI_CREDS_H

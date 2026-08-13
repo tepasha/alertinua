@@ -10,4 +10,9 @@ idf_component_register(
         "../include/wifi_manager"
     INCLUDE_DIRS 
         "."
+        "../include/map"
+        "../include/env"
+        "../include/scraping"
+        "../include/button"
+        "../include/wifi_manager"
 )

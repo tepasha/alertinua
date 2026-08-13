@@ -1,5 +1,4 @@
-#ifndef SCRAPING_H
-#define SCRAPING_H
+#pragma once
 
 #include "esp_event.h"
 #include "esp_http_client.h"
@@ -9,5 +8,3 @@ static bool wifi_connect_sta(void);
 static esp_err_t http_event_handler(esp_http_client_event_t *evt);
 static int api_fetch_bearer_auth(const char *url, const char *token, char *outBuf, size_t outBufSize);
 void get_api(void);
-
-#endif // SCRAPING_H

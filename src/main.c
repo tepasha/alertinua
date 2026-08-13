@@ -14,6 +14,7 @@
 #include "esp_log.h"
 
 #include "map_render.h"
+#include "ukraine_map_data.h"
 #include "read_env.h"
 
 #include "esp_log.h"
@@ -25,24 +26,20 @@
 #include "scraping.h"
 
 static const char *TAG = "main";
-
+/* ---- Пінаут LilyGO T-Display (класична ESP32-версія) ---- */
 #define PIN_MOSI GPIO_NUM_19
 #define PIN_SCLK GPIO_NUM_18
 #define PIN_CS   GPIO_NUM_5
 #define PIN_DC   GPIO_NUM_16
 #define PIN_RST  GPIO_NUM_23
 #define PIN_BL   GPIO_NUM_4
-
-// ---- API config ----
-#define API_URL       "https://api.example.com/v1/resource"
-#define BEARER_TOKEN  "your-bearer-token-here"
  
-// ---- Setup button ----
-#define SETUP_BUTTON_GPIO 0     // BOOT button on most ESP32 devkits
-#define LONG_PRESS_MS     3000  // hold for 3s to enter WiFi setup
-
 #define LCD_HOST      SPI2_HOST
 #define LCD_PCLK_HZ   (20 * 1000 * 1000)
+ 
+// ---- Setup button ----
+#define SETUP_BUTTON_GPIO GPIO_NUM_0
+#define LONG_PRESS_MS     3000           // hold for 3s to enter WiFi setup
 
 static void on_setup_button_long_press(void) {
     wifi_manager_start_provisioning();
@@ -55,18 +52,18 @@ static esp_lcd_panel_handle_t display_init(void)
         .mode = GPIO_MODE_OUTPUT,
     };
     ESP_ERROR_CHECK(gpio_config(&bl_cfg));
-    gpio_set_level(PIN_BL, 1);
-
+    gpio_set_level(PIN_BL, 1); /* підсвітка увімкнена */
+ 
     spi_bus_config_t buscfg = {
         .sclk_io_num = PIN_SCLK,
         .mosi_io_num = PIN_MOSI,
-        .miso_io_num = -1,
+        .miso_io_num = -1, /* дисплей нічого не надсилає назад */
         .quadwp_io_num = -1,
         .quadhd_io_num = -1,
         .max_transfer_sz = MAP_DISPLAY_W * MAP_DISPLAY_H * sizeof(uint16_t),
     };
     ESP_ERROR_CHECK(spi_bus_initialize(LCD_HOST, &buscfg, SPI_DMA_CH_AUTO));
-
+ 
     esp_lcd_panel_io_handle_t io_handle = NULL;
     esp_lcd_panel_io_spi_config_t io_config = {
         .dc_gpio_num = PIN_DC,
@@ -75,34 +72,49 @@ static esp_lcd_panel_handle_t display_init(void)
         .lcd_cmd_bits = 8,
         .lcd_param_bits = 8,
         .spi_mode = 0,
-        .trans_queue_depth = 10, // <--- Достатньо для асинхронної передачі
+        .trans_queue_depth = 10,
     };
     ESP_ERROR_CHECK(esp_lcd_new_panel_io_spi((esp_lcd_spi_bus_handle_t)LCD_HOST, &io_config, &io_handle));
-
+ 
     esp_lcd_panel_handle_t panel_handle = NULL;
     esp_lcd_panel_dev_config_t panel_config = {
         .reset_gpio_num = PIN_RST,
-        .rgb_ele_order = LCD_RGB_ELEMENT_ORDER_BGR,
+        .rgb_ele_order = LCD_RGB_ELEMENT_ORDER_BGR, /* якщо кольори переплутані - зміни на _RGB */
         .bits_per_pixel = 16,
     };
     ESP_ERROR_CHECK(esp_lcd_new_panel_st7789(io_handle, &panel_config, &panel_handle));
-
-    ESP_ERROR_CHECK(esp_lcd_panel_swap_xy(panel_handle, true));
-    ESP_ERROR_CHECK(esp_lcd_panel_mirror(panel_handle, true, false));
-    ESP_ERROR_CHECK(esp_lcd_panel_set_gap(panel_handle, 40, 50));
-
+ 
     ESP_ERROR_CHECK(esp_lcd_panel_reset(panel_handle));
     ESP_ERROR_CHECK(esp_lcd_panel_init(panel_handle));
-    ESP_ERROR_CHECK(esp_lcd_panel_invert_color(panel_handle, true));
-
+    ESP_ERROR_CHECK(esp_lcd_panel_invert_color(panel_handle, true)); /* потрібно для цієї IPS-панелі */
+    ESP_ERROR_CHECK(esp_lcd_panel_swap_xy(panel_handle, true));
+    ESP_ERROR_CHECK(esp_lcd_panel_mirror(panel_handle, false, true));
+    ESP_ERROR_CHECK(esp_lcd_panel_set_gap(panel_handle, 40, 52));
+ 
     ESP_ERROR_CHECK(esp_lcd_panel_disp_on_off(panel_handle, true));
-
+ 
     return panel_handle;
 }
 
 void app_main(void)
 {
-    //wifi and api fetch
+    // рендер
+    esp_lcd_panel_handle_t panel = display_init();
+ 
+    uint16_t *fb = heap_caps_malloc(MAP_DISPLAY_W * MAP_DISPLAY_H * sizeof(uint16_t), MALLOC_CAP_DMA);
+    if (fb == NULL) {
+        ESP_LOGE(TAG, "Не вдалось виділити framebuffer (%d байт)",
+                 (int)(MAP_DISPLAY_W * MAP_DISPLAY_H * sizeof(uint16_t)));
+        return;
+    }
+ 
+    render_map(fb, -1);
+    ESP_ERROR_CHECK(esp_lcd_panel_draw_bitmap(panel, 0, 0, MAP_DISPLAY_W, MAP_DISPLAY_H, fb));
+ 
+    ESP_LOGI(TAG, "Мапу областей України намальовано: %d областей, %d точок меж.",
+             MAP_NUM_REGIONS, MAP_NUM_POINTS);
+
+    //wifi
     esp_err_t ret = nvs_flash_init(); // required by WiFi and by wifi_creds
     if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
         ESP_ERROR_CHECK(nvs_flash_erase());
@@ -117,6 +129,7 @@ void app_main(void)
         return; // button_task keeps running in the background regardless
     }
  
+    // scraping
     // static char response_body[2048];
     // int status = api_fetch_bearer_auth(API_URL, BEARER_TOKEN, response_body, sizeof(response_body));
  
@@ -129,66 +142,4 @@ void app_main(void)
 
     // read token from .env file
     // char *token = read_env_var("TOKEN");  // Читаємо змінну середовища з .env файлу
-
-    esp_lcd_panel_handle_t panel = display_init();
-
-    size_t fb_size = MAP_DISPLAY_W * MAP_DISPLAY_H * sizeof(uint16_t);
-
-    // Виділяємо ДВА буфери в оперативній пам'яті з підтримкою DMA
-    uint16_t *fb0 = heap_caps_malloc(fb_size, MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL);
-    uint16_t *fb1 = heap_caps_malloc(fb_size, MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL);
-
-    if (fb0 == NULL || fb1 == NULL) {
-        ESP_LOGE(TAG, "Не вдалось виділити подвійний фреймбуфер DMA!");
-        return;
-    }
-
-    uint16_t *current_fb = fb0;
-    int selected = -1;
-
-    // рендер
-    render_map(current_fb, selected);
-    esp_lcd_panel_draw_bitmap(panel, 0, 0, MAP_DISPLAY_W, MAP_DISPLAY_H, current_fb);
-
-    while (1) {
-
-        // bool current_next = gpio_get_level(BTN_NEXT);
-        // bool current_prev = gpio_get_level(BTN_PREV);
-        // bool changed = false;
-
-        // if (prev_next_state && !current_next) {
-        //     if ((now - last_next_press) > pdMS_TO_TICKS(80)) {
-        //         selected = (selected + 1) % MAP_NUM_REGIONS;
-        //         changed = true;
-        //         last_next_press = now;
-        //     }
-        // }
-
-        // if (prev_prev_state && !current_prev) {
-        //     if ((now - last_prev_press) > pdMS_TO_TICKS(80)) {
-        //         selected = (selected - 1 + MAP_NUM_REGIONS) % MAP_NUM_REGIONS;
-        //         changed = true;
-        //         last_prev_press = now;
-        //     }
-        // }
-
-        // if (changed) {
-        //     // Перемикаємо вказівник на активний буфер
-        //     current_fb = (current_fb == fb0) ? fb1 : fb0;
-
-        //     // Готуємо новий кадр у фоновому буфері
-        //     render_map(current_fb, selected);
-
-        //     // Надсилаємо новий кадр по SPI через DMA
-        //     esp_lcd_panel_draw_bitmap(panel, 0, 0, MAP_DISPLAY_W, MAP_DISPLAY_H, current_fb);
-
-        //     const map_region_t *r = &map_regions[selected];
-        //     ESP_LOGI(TAG, "[%d/%d] %s", selected + 1, MAP_NUM_REGIONS, r->name);
-        // }
-
-        // prev_next_state = current_next;
-        // prev_prev_state = current_prev;
-
-        // vTaskDelay(pdMS_TO_TICKS(10));
-    }
 }
