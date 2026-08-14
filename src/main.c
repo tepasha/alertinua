@@ -132,12 +132,11 @@ void app_main(void)
 
     // scraping
     // static char response_body[2048];
+    // char apiString = ALERT_API + "active.json";
     // int status = api_fetch_bearer_auth(ALERT_API, ALERT_TOKEN, response_body, sizeof(response_body));
- 
     // if (status >= 200 && status < 300) {
     //     ESP_LOGI(TAG, "Response body:\n%s", response_body);
     // } else {
     //     ESP_LOGE(TAG, "Fetch failed, status: %d", status);
     // }
-    //end wifi and api fetch
 }
