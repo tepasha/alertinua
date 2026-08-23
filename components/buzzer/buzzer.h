@@ -1,8 +1,6 @@
-//
-// Created by tepasha on 23.08.2026.
-//
+#pragma once
+#include <stdint.h>
 
-#ifndef ALERTINUA_BUZZER_H
-#define ALERTINUA_BUZZER_H
-
-#endif //ALERTINUA_BUZZER_H
+void buzzer_init(void);
+void buzzer_tone(uint32_t freq_hz, uint32_t duration_ms);
+void buzzer_off(void);

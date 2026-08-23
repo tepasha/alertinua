@@ -16,20 +16,18 @@
 #include "esp_log.h"
 #include "driver/gpio.h"
 #include "driver/spi_master.h"
-
-#include "map_render.h"
-#include "ukraine_map_data.h"
-
 #include "esp_log.h"
 #include "nvs.h"
 #include "nvs_flash.h"
- 
+
+#include "buzzer.h"
+#include "map_render.h"
 #include "button.h"
 #include "scraping.h"
 #include "wifi_manager.h"
 
 static const char *TAG = "main";
-/* ---- Пінаут LilyGO T-Display (класична ESP32-версія) ---- */
+
 #define PIN_MOSI GPIO_NUM_19
 #define PIN_SCLK GPIO_NUM_18
 #define PIN_CS   GPIO_NUM_5
@@ -40,7 +38,6 @@ static const char *TAG = "main";
 #define LCD_HOST      SPI2_HOST
 #define LCD_PCLK_HZ   (20 * 1000 * 1000)
  
-// ---- Setup button ----
 #define SETUP_BUTTON_GPIO GPIO_NUM_0
 #define LONG_PRESS_MS     3000           // hold for 3s to enter WiFi setup
 
@@ -50,13 +47,13 @@ static void on_setup_button_long_press(void) {
 
 static esp_lcd_panel_handle_t display_init(void)
 {
-    gpio_config_t bl_cfg = {
+     gpio_config_t bl_cfg = {
         .pin_bit_mask = 1ULL << PIN_BL,
         .mode = GPIO_MODE_OUTPUT,
     };
     ESP_ERROR_CHECK(gpio_config(&bl_cfg));
     gpio_set_level(PIN_BL, 1); /* підсвітка увімкнена */
- 
+
     spi_bus_config_t buscfg = {
         .sclk_io_num = PIN_SCLK,
         .mosi_io_num = PIN_MOSI,
@@ -66,7 +63,7 @@ static esp_lcd_panel_handle_t display_init(void)
         .max_transfer_sz = MAP_DISPLAY_W * MAP_DISPLAY_H * sizeof(uint16_t),
     };
     ESP_ERROR_CHECK(spi_bus_initialize(LCD_HOST, &buscfg, SPI_DMA_CH_AUTO));
- 
+
     esp_lcd_panel_io_handle_t io_handle = NULL;
     esp_lcd_panel_io_spi_config_t io_config = {
         .dc_gpio_num = PIN_DC,
@@ -78,7 +75,7 @@ static esp_lcd_panel_handle_t display_init(void)
         .trans_queue_depth = 10,
     };
     ESP_ERROR_CHECK(esp_lcd_new_panel_io_spi((esp_lcd_spi_bus_handle_t)LCD_HOST, &io_config, &io_handle));
- 
+
     esp_lcd_panel_handle_t panel_handle = NULL;
     esp_lcd_panel_dev_config_t panel_config = {
         .reset_gpio_num = PIN_RST,
@@ -86,10 +83,15 @@ static esp_lcd_panel_handle_t display_init(void)
         .bits_per_pixel = 16,
     };
     ESP_ERROR_CHECK(esp_lcd_new_panel_st7789(io_handle, &panel_config, &panel_handle));
- 
+
     ESP_ERROR_CHECK(esp_lcd_panel_reset(panel_handle));
     ESP_ERROR_CHECK(esp_lcd_panel_init(panel_handle));
     ESP_ERROR_CHECK(esp_lcd_panel_invert_color(panel_handle, true)); /* потрібно для цієї IPS-панелі */
+
+    /* Панель фізично 135x240 (портрет); повертаємо в альбомну орієнтацію
+     * 240x135, під яку згенеровано координати мапи. Зсув (gap) теж
+     * міняється місцями разом з осями. Якщо картинка виявиться зсунутою,
+     * підправ ці два числа чи прапорці mirror нижче. */
     ESP_ERROR_CHECK(esp_lcd_panel_swap_xy(panel_handle, true));
     ESP_ERROR_CHECK(esp_lcd_panel_mirror(panel_handle, false, true));
     ESP_ERROR_CHECK(esp_lcd_panel_set_gap(panel_handle, 40, 52));
@@ -101,6 +103,14 @@ static esp_lcd_panel_handle_t display_init(void)
 
 void app_main(void)
 {
+    // грати музику
+    buzzer_init();
+    buzzer_tone(523, 120);  /* C5 */
+    buzzer_tone(0, 30);     /* пауза */
+    buzzer_tone(659, 120);  /* E5 */
+    buzzer_tone(0, 30);
+    buzzer_tone(784, 200);  /* G5 */
+
     // рендер
     esp_lcd_panel_handle_t panel = display_init();
  
