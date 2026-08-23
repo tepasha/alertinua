@@ -1,3 +1,7 @@
+//TODO:
+//  1. Перенести код ініціалізації та всю бізнес-логіку до окремих файлів app.c / app.h.
+//  2. Виключити використання макросу ESP_ERROR_CHECK(). Замінити його на обробку коду помилки ERR із виведенням відповідного інформаційного повідомлення.
+
 #include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
@@ -5,13 +9,13 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
-#include "driver/gpio.h"
-#include "driver/spi_master.h"
 #include "esp_heap_caps.h"
 #include "esp_lcd_panel_io.h"
 #include "esp_lcd_panel_ops.h"
 #include "esp_lcd_panel_vendor.h"
 #include "esp_log.h"
+#include "driver/gpio.h"
+#include "driver/spi_master.h"
 
 #include "map_render.h"
 #include "ukraine_map_data.h"
@@ -20,9 +24,9 @@
 #include "nvs.h"
 #include "nvs_flash.h"
  
-#include "wifi_manager.h"
 #include "button.h"
 #include "scraping.h"
+#include "wifi_manager.h"
 
 static const char *TAG = "main";
 /* ---- Пінаут LilyGO T-Display (класична ESP32-версія) ---- */
