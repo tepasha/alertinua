@@ -34,14 +34,6 @@ static void on_setup_button_long_press(void) {
 
 void app_main(void)
 {
-    // грати музику
-    buzzer_init();
-    buzzer_tone(523, 120);  /* C5 */
-    buzzer_tone(0, 30);     /* пауза */
-    buzzer_tone(659, 120);  /* E5 */
-    buzzer_tone(0, 30);
-    buzzer_tone(784, 200);  /* G5 */
-
     // рендер
     esp_lcd_panel_handle_t panel = display_init();
  

@@ -58,3 +58,30 @@ void buzzer_off(void)
     ledc_set_duty(BUZZER_LEDC_MODE, BUZZER_LEDC_CHANNEL, 0);
     ledc_update_duty(BUZZER_LEDC_MODE, BUZZER_LEDC_CHANNEL);
 }
+
+void buzzer_play_siren(void)
+{
+    buzzer_init();
+
+    const uint32_t freq_low = 400;
+    const uint32_t freq_high = 1200;
+    const uint32_t step_ms = 3;
+    const int cycles = 3;
+    const uint32_t step_hz = 20;
+ 
+    ESP_ERROR_CHECK(ledc_set_duty(BUZZER_LEDC_MODE, BUZZER_LEDC_CHANNEL, BUZZER_DUTY_50PCT));
+    ESP_ERROR_CHECK(ledc_update_duty(BUZZER_LEDC_MODE, BUZZER_LEDC_CHANNEL));
+ 
+    for (int c = 0; c < cycles; c++) {
+        for (uint32_t f = freq_low; f < freq_high; f += step_hz) {
+            ledc_set_freq(BUZZER_LEDC_MODE, BUZZER_LEDC_TIMER, f);
+            vTaskDelay(pdMS_TO_TICKS(step_ms));
+        }
+        for (uint32_t f = freq_high; f > freq_low; f -= step_hz) {
+            ledc_set_freq(BUZZER_LEDC_MODE, BUZZER_LEDC_TIMER, f);
+            vTaskDelay(pdMS_TO_TICKS(step_ms));
+        }
+    }
+ 
+    buzzer_off();
+}
