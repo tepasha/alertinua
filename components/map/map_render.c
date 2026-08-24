@@ -6,7 +6,6 @@
 #include "esp_log.h"
 #include "driver/gpio.h"
 #include "driver/spi_master.h"
-#include "esp_log.h"
 
 #include "map_render.h"
 #include "ukraine_map_data.h"
@@ -183,7 +182,7 @@ void render_map(uint16_t *fb, int selected){
     }
 }
 
-void render_map_multicolor(uint16_t *fb, int selected){
+void render_map_multicolor(uint16_t *fb, const int selected){
     fb_clear(fb, swap16(rgb565(10, 12, 22)));
 
     for (int i = 0; i < MAP_NUM_REGIONS; i++) {
@@ -204,7 +203,7 @@ void render_map_multicolor(uint16_t *fb, int selected){
     }
 }
 
-esp_lcd_panel_handle_t display_init(void){
+esp_lcd_panel_handle_t display_init(){
     
     gpio_config_t bl_cfg = {
         .pin_bit_mask = 1ULL << PIN_BL,
@@ -223,7 +222,7 @@ esp_lcd_panel_handle_t display_init(void){
     };
     ESP_ERROR_CHECK(spi_bus_initialize(LCD_HOST, &buscfg, SPI_DMA_CH_AUTO));
 
-    esp_lcd_panel_io_handle_t io_handle = NULL;
+    esp_lcd_panel_io_handle_t io_handle = nullptr;
     esp_lcd_panel_io_spi_config_t io_config = {
         .dc_gpio_num = PIN_DC,
         .cs_gpio_num = PIN_CS,
@@ -235,7 +234,7 @@ esp_lcd_panel_handle_t display_init(void){
     };
     ESP_ERROR_CHECK(esp_lcd_new_panel_io_spi((esp_lcd_spi_bus_handle_t)LCD_HOST, &io_config, &io_handle));
 
-    esp_lcd_panel_handle_t panel_handle = NULL;
+    esp_lcd_panel_handle_t panel_handle = nullptr;
     esp_lcd_panel_dev_config_t panel_config = {
         .reset_gpio_num = PIN_RST,
         .rgb_ele_order = LCD_RGB_ELEMENT_ORDER_BGR, /* якщо кольори переплутані - зміни на _RGB */
@@ -258,4 +257,16 @@ esp_lcd_panel_handle_t display_init(void){
     ESP_ERROR_CHECK(esp_lcd_panel_disp_on_off(panel_handle, true));
  
     return panel_handle;
+}
+
+void main_render() {
+    esp_lcd_panel_handle_t panel = display_init();
+
+    uint16_t *fb = heap_caps_malloc(MAP_DISPLAY_W * MAP_DISPLAY_H * sizeof(uint16_t), MALLOC_CAP_DMA);
+    if (fb == NULL) {
+        return;
+    }
+
+    render_map(fb, -1);
+    esp_lcd_panel_draw_bitmap(panel, 0, 0, MAP_DISPLAY_W, MAP_DISPLAY_H, fb);
 }
