@@ -14,7 +14,7 @@
 #define BUZZER_DUTY_RES     LEDC_TIMER_10_BIT   /* шпаруватість 0..1023 */
 #define BUZZER_DUTY_50PCT   512                 /* 50% - найгучніше й найчистіше для п'єзо */
 
-void buzzer_init(void)
+void buzzer_init()
 {
     ledc_timer_config_t timer_cfg = {
         .speed_mode = BUZZER_LEDC_MODE,
@@ -25,7 +25,7 @@ void buzzer_init(void)
     };
     ESP_ERROR_CHECK(ledc_timer_config(&timer_cfg));
 
-    ledc_channel_config_t channel_cfg = {
+    const ledc_channel_config_t channel_cfg = {
         .gpio_num = BUZZER_GPIO,
         .speed_mode = BUZZER_LEDC_MODE,
         .channel = BUZZER_LEDC_CHANNEL,
@@ -53,21 +53,21 @@ void buzzer_tone(uint32_t freq_hz, uint32_t duration_ms)
     buzzer_off();
 }
 
-void buzzer_off(void)
+void buzzer_off()
 {
     ledc_set_duty(BUZZER_LEDC_MODE, BUZZER_LEDC_CHANNEL, 0);
     ledc_update_duty(BUZZER_LEDC_MODE, BUZZER_LEDC_CHANNEL);
 }
 
-void buzzer_play_siren(void)
+void buzzer_play_siren()
 {
     buzzer_init();
 
-    const uint32_t freq_low = 400;
-    const uint32_t freq_high = 1200;
-    const uint32_t step_ms = 3;
-    const int cycles = 3;
-    const uint32_t step_hz = 20;
+    constexpr uint32_t freq_low = 400;
+    constexpr uint32_t freq_high = 1200;
+    constexpr uint32_t step_ms = 60;
+    constexpr uint32_t cycles = 100;
+    constexpr uint32_t step_hz = 20;
  
     ESP_ERROR_CHECK(ledc_set_duty(BUZZER_LEDC_MODE, BUZZER_LEDC_CHANNEL, BUZZER_DUTY_50PCT));
     ESP_ERROR_CHECK(ledc_update_duty(BUZZER_LEDC_MODE, BUZZER_LEDC_CHANNEL));

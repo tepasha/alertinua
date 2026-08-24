@@ -21,7 +21,7 @@ static void on_setup_button_long_press() {
 
 void app_main() {
     // play siren sound on startup
-    buzzer_play_siren();
+    // buzzer_play_siren();
     // рендер
     main_render();
 
