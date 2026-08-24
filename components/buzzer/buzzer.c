@@ -65,8 +65,8 @@ void buzzer_play_siren()
 
     constexpr uint32_t freq_low = 400;
     constexpr uint32_t freq_high = 1200;
-    constexpr uint32_t step_ms = 20;
-    constexpr uint32_t cycles = 50;
+    constexpr uint32_t step_ms = 50;
+    constexpr uint32_t cycles = 100;
     constexpr uint32_t step_hz = 20;
  
     ESP_ERROR_CHECK(ledc_set_duty(BUZZER_LEDC_MODE, BUZZER_LEDC_CHANNEL, BUZZER_DUTY_50PCT));

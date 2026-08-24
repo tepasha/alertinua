@@ -13,8 +13,6 @@
 #include "components/button/button.h"
 #include "components/scraping//scraping.h"
 
-static const char *TAG = "main";
-
 static void on_setup_button_long_press() {
     wifi_manager_start_provisioning();
 }
