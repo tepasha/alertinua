@@ -259,6 +259,23 @@ esp_lcd_panel_handle_t display_init(){
     return panel_handle;
 }
 
+void render_mark_region_red(uint16_t *fb, int region_index) {
+    if (region_index < 0 || region_index >= MAP_NUM_REGIONS) {
+        return;
+    }
+    const map_region_t *r = &map_regions[region_index];
+    uint16_t red_fill = swap16(rgb565(0, 0, 153));
+    uint16_t red_edge = swap16(rgb565(118, 118, 255));
+    fb_fill_polygon(fb, &map_points[r->point_offset], r->point_count, red_fill);
+    fb_draw_polygon_outline(fb, &map_points[r->point_offset], r->point_count, red_edge);
+}
+
+void render_mark_regions_red(uint16_t *fb, const int *region_indices, int count) {
+    for (int i = 0; i < count; i++) {
+        render_mark_region_red(fb, region_indices[i]);
+    }
+}
+
 void main_render() {
     esp_lcd_panel_handle_t panel = display_init();
 
@@ -270,3 +287,21 @@ void main_render() {
     render_map(fb, -1);
     esp_lcd_panel_draw_bitmap(panel, 0, 0, MAP_DISPLAY_W, MAP_DISPLAY_H, fb);
 }
+
+void main_render_mark() {
+    esp_lcd_panel_handle_t panel = display_init();
+
+    uint16_t *fb = heap_caps_malloc(MAP_DISPLAY_W * MAP_DISPLAY_H * sizeof(uint16_t), MALLOC_CAP_DMA);
+    if (fb == NULL) {
+        return;
+    }
+
+    render_map(fb, -1);
+
+    int alert[] = {3, 7, 14};
+    unsigned int count = sizeof(alert) / sizeof(alert[0]);
+    render_mark_regions_red(fb, alert, count);
+
+    esp_lcd_panel_draw_bitmap(panel, 0, 0, MAP_DISPLAY_W, MAP_DISPLAY_H, fb);
+}
+

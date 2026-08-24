@@ -18,10 +18,8 @@ static void on_setup_button_long_press() {
 }
 
 void app_main() {
-    // play siren sound on startup
-    // buzzer_play_siren();
     // рендер
-    main_render();
+    main_render_mark();
 
     // read token from .env file
     //ESP_LOGI(TAG, "Read API: %s, Token: %s", ALERT_API, ALERT_TOKEN);
