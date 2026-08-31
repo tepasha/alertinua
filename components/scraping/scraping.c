@@ -3,7 +3,6 @@
 #include <inttypes.h>
 
 #include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
 #include "freertos/event_groups.h"
 
 #include "esp_wifi.h"
@@ -19,16 +18,15 @@
 #define WIFI_PASSWORD  "your-wifi-password"
 #define WIFI_MAX_RETRY 5
 
-#define API_URL       "https://api.example.com/v1/resource"
-#define BEARER_TOKEN  "your-bearer-token-here"
-
-#define MAX_HTTP_OUTPUT_BUFFER 2048
-
-static const char *TAG = "scraping";
-
-static EventGroupHandle_t s_wifi_event_group;
 #define WIFI_CONNECTED_BIT BIT0
 #define WIFI_FAIL_BIT      BIT1
+#define MAX_HTTP_OUTPUT_BUFFER 2048
+
+static const char *TAG = "SCRAPING";
+static esp_err_t err;
+
+static EventGroupHandle_t s_wifi_event_group;
+
 static int s_retry_num = 0;
 
 static void wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t event_id, void *event_data) {
@@ -38,32 +36,51 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t e
         if (s_retry_num < WIFI_MAX_RETRY) {
             esp_wifi_connect();
             s_retry_num++;
-            ESP_LOGI(TAG, "retrying WiFi connection (%d/%d)", s_retry_num, WIFI_MAX_RETRY);
+            ESP_LOGE(TAG, "retrying WiFi connection (%d/%d)", s_retry_num, WIFI_MAX_RETRY);
         } else {
             xEventGroupSetBits(s_wifi_event_group, WIFI_FAIL_BIT);
         }
     } else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
         ip_event_got_ip_t *event = (ip_event_got_ip_t *)event_data;
-        ESP_LOGI(TAG, "got IP: " IPSTR, IP2STR(&event->ip_info.ip));
+        ESP_LOGE(TAG, "got IP: " IPSTR, IP2STR(&event->ip_info.ip));
         s_retry_num = 0;
         xEventGroupSetBits(s_wifi_event_group, WIFI_CONNECTED_BIT);
     }
 }
 
-static bool wifi_connect_sta(void) {
+static bool wifi_connect_sta() {
     s_wifi_event_group = xEventGroupCreate();
 
-    ESP_ERROR_CHECK(esp_netif_init());
-    ESP_ERROR_CHECK(esp_event_loop_create_default());
+    err = esp_netif_init();
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "esp_netif_init: %s", esp_err_to_name(err));
+    }
+
+    err = esp_event_loop_create_default();
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "esp_event_loop_create_default: %s", esp_err_to_name(err));
+    }
     esp_netif_create_default_wifi_sta();
 
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
-    ESP_ERROR_CHECK(esp_wifi_init(&cfg));
+
+    err = esp_wifi_init(&cfg);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "esp_wifi_init: %s", esp_err_to_name(err));
+    }
 
     esp_event_handler_instance_t instance_any_id;
     esp_event_handler_instance_t instance_got_ip;
-    ESP_ERROR_CHECK(esp_event_handler_instance_register(WIFI_EVENT, ESP_EVENT_ANY_ID, &wifi_event_handler, NULL, &instance_any_id));
-    ESP_ERROR_CHECK(esp_event_handler_instance_register(IP_EVENT, IP_EVENT_STA_GOT_IP, &wifi_event_handler, NULL, &instance_got_ip));
+
+    err = esp_event_handler_instance_register(WIFI_EVENT, ESP_EVENT_ANY_ID, &wifi_event_handler, NULL, &instance_any_id);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "esp_event_handler_instance_register: %s", esp_err_to_name(err));
+    }
+
+    err = esp_event_handler_instance_register(IP_EVENT, IP_EVENT_STA_GOT_IP, &wifi_event_handler, NULL, &instance_got_ip);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "esp_event_handler_instance_register: %s", esp_err_to_name(err));
+    }
 
     wifi_config_t wifi_config = {
         .sta = {
@@ -73,11 +90,22 @@ static bool wifi_connect_sta(void) {
         },
     };
 
-    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
-    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_config));
-    ESP_ERROR_CHECK(esp_wifi_start());
+    err = esp_wifi_set_mode(WIFI_MODE_STA);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "esp_wifi_set_mode: %s", esp_err_to_name(err));
+    }
 
-    ESP_LOGI(TAG, "connecting to WiFi \"%s\"...", WIFI_SSID);
+    err = esp_wifi_set_config(WIFI_IF_STA, &wifi_config);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "esp_wifi_set_config: %s", esp_err_to_name(err));
+    }
+
+    err = esp_wifi_start();
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "esp_wifi_start: %s", esp_err_to_name(err));
+    }
+
+    ESP_LOGE(TAG, "connecting to WiFi \"%s\"...", WIFI_SSID);
 
     EventBits_t bits = xEventGroupWaitBits(s_wifi_event_group, WIFI_CONNECTED_BIT | WIFI_FAIL_BIT, pdFALSE, pdFALSE, portMAX_DELAY);
 
@@ -125,13 +153,12 @@ static int api_fetch_bearer_auth(const char *url, const char *token, char *outBu
     snprintf(auth_header, sizeof(auth_header), "Bearer %s", token);
     esp_http_client_set_header(client, "Authorization", auth_header);
     esp_http_client_set_header(client, "Accept", "application/json");
-
-    esp_err_t err = esp_http_client_perform(client);
-
     int status = -1;
+
+    err = esp_http_client_perform(client);
     if (err == ESP_OK) {
         status = esp_http_client_get_status_code(client);
-        ESP_LOGI(TAG, "HTTP status: %d, content-length: %" PRId64, status, esp_http_client_get_content_length(client));
+        ESP_LOGE(TAG, "HTTP status: %d, content-length: %" PRId64, status, esp_http_client_get_content_length(client));
     } else {
         ESP_LOGE(TAG, "Request failed: %s", esp_err_to_name(err));
     }
@@ -143,10 +170,17 @@ static int api_fetch_bearer_auth(const char *url, const char *token, char *outBu
 void get_api(void) {
     esp_err_t ret = nvs_flash_init(); // required by WiFi for calibration/config storage
     if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
-        ESP_ERROR_CHECK(nvs_flash_erase());
+        err = nvs_flash_erase();
+        if (err != ESP_OK) {
+            ESP_LOGE(TAG, "nvs_flash_erase: %s", esp_err_to_name(err));
+        }
+
         ret = nvs_flash_init();
     }
-    ESP_ERROR_CHECK(ret);
+    err = ret;
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "ret: %s", esp_err_to_name(err));
+    }
 
     if (!wifi_connect_sta()) {
         ESP_LOGE(TAG, "Failed to connect to WiFi, giving up");
@@ -157,7 +191,7 @@ void get_api(void) {
     int status = api_fetch_bearer_auth(API_URL, BEARER_TOKEN, response_body, sizeof(response_body));
 
     if (status >= 200 && status < 300) {
-        ESP_LOGI(TAG, "Response body:\n%s", response_body);
+        ESP_LOGE(TAG, "Response body:\n%s", response_body);
     } else {
         ESP_LOGE(TAG, "Fetch failed, status: %d", status);
     }
