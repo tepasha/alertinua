@@ -25,9 +25,10 @@ static const char *TAG = "wifi_manager";
 #define PROVISIONING_AP_SSID "ESP32-Setup"
 #define PROVISIONING_AP_PASSWORD ""
 
-static EventGroupHandle_t s_wifi_event_group;
 #define WIFI_CONNECTED_BIT BIT0
 #define WIFI_FAIL_BIT      BIT1
+
+static EventGroupHandle_t s_wifi_event_group;
 static int s_retry_num = 0;
 
 static void sta_event_handler(void *arg, esp_event_base_t event_base, int32_t event_id, void *event_data) {
@@ -49,7 +50,7 @@ static void sta_event_handler(void *arg, esp_event_base_t event_base, int32_t ev
     }
 }
 
-bool wifi_manager_connect_sta(void) {
+bool wifi_manager_connect_sta() {
     char ssid[WIFI_CREDS_SSID_MAX_LEN] = DEFAULT_WIFI_SSID;
     char password[WIFI_CREDS_PASS_MAX_LEN] = DEFAULT_WIFI_PASSWORD;
 
@@ -61,26 +62,56 @@ bool wifi_manager_connect_sta(void) {
 
     s_wifi_event_group = xEventGroupCreate();
 
-    ESP_ERROR_CHECK(esp_netif_init());
-    ESP_ERROR_CHECK(esp_event_loop_create_default());
+    esp_err_t err = esp_netif_init();
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "esp_netif_init: %s", esp_err_to_name(err));
+    }
+
+    err = esp_event_loop_create_default();
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "esp_event_loop_create_default: %s", esp_err_to_name(err));
+    }
+
     esp_netif_create_default_wifi_sta();
 
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
-    ESP_ERROR_CHECK(esp_wifi_init(&cfg));
+    err = esp_wifi_init(&cfg);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "esp_event_loop_create_default: %s", esp_err_to_name(err));
+    }
 
     esp_event_handler_instance_t instance_any_id;
     esp_event_handler_instance_t instance_got_ip;
-    ESP_ERROR_CHECK(esp_event_handler_instance_register(WIFI_EVENT, ESP_EVENT_ANY_ID, &sta_event_handler, NULL, &instance_any_id));
-    ESP_ERROR_CHECK(esp_event_handler_instance_register(IP_EVENT, IP_EVENT_STA_GOT_IP, &sta_event_handler, NULL, &instance_got_ip));
+
+    err = esp_event_handler_instance_register(WIFI_EVENT, ESP_EVENT_ANY_ID, &sta_event_handler, NULL, &instance_any_id);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "esp_event_handler_instance_register: %s", esp_err_to_name(err));
+    }
+
+    err = esp_event_handler_instance_register(IP_EVENT, IP_EVENT_STA_GOT_IP, &sta_event_handler, NULL, &instance_got_ip);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "esp_event_handler_instance_register: %s", esp_err_to_name(err));
+    }
 
     wifi_config_t wifi_config = { 0 };
     strncpy((char *)wifi_config.sta.ssid, ssid, sizeof(wifi_config.sta.ssid) - 1);
     strncpy((char *)wifi_config.sta.password, password, sizeof(wifi_config.sta.password) - 1);
     wifi_config.sta.threshold.authmode = WIFI_AUTH_WPA2_PSK;
 
-    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
-    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_config));
-    ESP_ERROR_CHECK(esp_wifi_start());
+    err = esp_wifi_set_mode(WIFI_MODE_STA);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "esp_wifi_set_mode: %s", esp_err_to_name(err));
+    }
+
+    err = esp_wifi_set_config(WIFI_IF_STA, &wifi_config);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "esp_wifi_set_config: %s", esp_err_to_name(err));
+    }
+
+    err = esp_wifi_start();
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "esp_wifi_start: %s", esp_err_to_name(err));
+    }
 
     ESP_LOGI(TAG, "connecting to WiFi \"%s\"...", ssid);
 
@@ -213,7 +244,7 @@ static const httpd_uri_t save_uri = {
 
 static bool s_provisioning_active = false;
 
-void wifi_manager_start_provisioning(void) {
+void wifi_manager_start_provisioning() {
     if (s_provisioning_active) {
         ESP_LOGW(TAG, "already in provisioning mode");
         return;

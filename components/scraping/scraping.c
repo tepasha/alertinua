@@ -167,7 +167,7 @@ static int api_fetch_bearer_auth(const char *url, const char *token, char *outBu
     return status;
 }
 
-void get_api(void) {
+[[maybe_unused]] static void get_api(char apiurl[], char token[]) {
     esp_err_t ret = nvs_flash_init(); // required by WiFi for calibration/config storage
     if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
         err = nvs_flash_erase();
@@ -188,7 +188,7 @@ void get_api(void) {
     }
 
     static char response_body[MAX_HTTP_OUTPUT_BUFFER];
-    int status = api_fetch_bearer_auth(API_URL, BEARER_TOKEN, response_body, sizeof(response_body));
+    int status = api_fetch_bearer_auth(apiurl, token, response_body, sizeof(response_body));
 
     if (status >= 200 && status < 300) {
         ESP_LOGE(TAG, "Response body:\n%s", response_body);
