@@ -31,7 +31,6 @@ static const char *TAG = "wifi_manager";
 static EventGroupHandle_t s_wifi_event_group;
 static int s_retry_num = 0;
 
-
 static const char *SETTINGS_PAGE =
 "<!DOCTYPE html>"
 "<html lang=\"uk\">"
@@ -267,7 +266,7 @@ bool wifi_manager_connect_sta() {
     if (wifi_creds_load(ssid, password) == ESP_OK) {
         ESP_LOGI(TAG, "using WiFi credentials saved in NVS (SSID \"%s\")", ssid);
     } else {
-        ESP_LOGI(TAG, "no saved WiFi credentials, using compiled-in default (SSID \"%s\")", ssid);
+        ESP_LOGE(TAG, "no saved WiFi credentials, using compiled-in default (SSID \"%s\")", ssid);
     }
 
     s_wifi_event_group = xEventGroupCreate();

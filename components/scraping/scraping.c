@@ -42,7 +42,7 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t e
         }
     } else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
         ip_event_got_ip_t *event = (ip_event_got_ip_t *)event_data;
-        ESP_LOGE(TAG, "got IP: " IPSTR, IP2STR(&event->ip_info.ip));
+        ESP_LOGI(TAG, "got IP: " IPSTR, IP2STR(&event->ip_info.ip));
         s_retry_num = 0;
         xEventGroupSetBits(s_wifi_event_group, WIFI_CONNECTED_BIT);
     }
@@ -105,7 +105,7 @@ static bool wifi_connect_sta() {
         ESP_LOGE(TAG, "esp_wifi_start: %s", esp_err_to_name(err));
     }
 
-    ESP_LOGE(TAG, "connecting to WiFi \"%s\"...", WIFI_SSID);
+    ESP_LOGI(TAG, "connecting to WiFi \"%s\"...", WIFI_SSID);
 
     EventBits_t bits = xEventGroupWaitBits(s_wifi_event_group, WIFI_CONNECTED_BIT | WIFI_FAIL_BIT, pdFALSE, pdFALSE, portMAX_DELAY);
 
@@ -158,7 +158,7 @@ int api_fetch_bearer_auth(const char *url, const char *token, char *outBuf) {
     err = esp_http_client_perform(client);
     if (err == ESP_OK) {
         status = esp_http_client_get_status_code(client);
-        ESP_LOGE(TAG, "HTTP status: %d, content-length: %" PRId64, status, esp_http_client_get_content_length(client));
+        ESP_LOGI(TAG, "HTTP status: %d, content-length: %" PRId64, status, esp_http_client_get_content_length(client));
     } else {
         ESP_LOGE(TAG, "Request failed: %s", esp_err_to_name(err));
     }
@@ -191,7 +191,7 @@ int api_fetch_bearer_auth(const char *url, const char *token, char *outBuf) {
     int status = api_fetch_bearer_auth(apiurl, token, response_body);
 
     if (status >= 200 && status < 300) {
-        ESP_LOGE(TAG, "Response body:\n%s", response_body);
+        ESP_LOGI(TAG, "Response body:\n%s", response_body);
     } else {
         ESP_LOGE(TAG, "Fetch failed, status: %d", status);
     }
