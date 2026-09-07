@@ -138,7 +138,7 @@ static esp_err_t http_event_handler(esp_http_client_event_t *evt) {
     return ESP_OK;
 }
 
-static int api_fetch_bearer_auth(const char *url, const char *token, char *outBuf, size_t outBufSize) {
+int api_fetch_bearer_auth(const char *url, const char *token, char *outBuf) {
     esp_http_client_config_t config = {
         .url = url,
         .event_handler = http_event_handler,
@@ -188,7 +188,7 @@ static int api_fetch_bearer_auth(const char *url, const char *token, char *outBu
     }
 
     static char response_body[MAX_HTTP_OUTPUT_BUFFER];
-    int status = api_fetch_bearer_auth(apiurl, token, response_body, sizeof(response_body));
+    int status = api_fetch_bearer_auth(apiurl, token, response_body);
 
     if (status >= 200 && status < 300) {
         ESP_LOGE(TAG, "Response body:\n%s", response_body);
