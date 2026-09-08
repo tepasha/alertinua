@@ -17,7 +17,7 @@ static void on_setup_button_long_press() {
 
 void app_main() {
     //init display
-    // esp_lcd_panel_handle_t panel = display_init();
+    esp_lcd_panel_handle_t panel = display_init();
     uint16_t *fb = heap_caps_malloc(MAP_DISPLAY_W * MAP_DISPLAY_H * sizeof(uint16_t), MALLOC_CAP_DMA);
     if (fb == NULL) {
         ESP_LOGE(TAG, "Не вдалось виділити framebuffer (%d байт)",
@@ -63,5 +63,9 @@ void app_main() {
             ESP_LOGE(TAG, "Fetch failed, status: %d", status);
             render_draw_err_banner(fb);
         }
+    }
+    err = esp_lcd_panel_draw_bitmap(panel, 0, 0, MAP_DISPLAY_W, MAP_DISPLAY_H, fb);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "esp_lcd_panel_draw_bitmap: %d", err);
     }
 }

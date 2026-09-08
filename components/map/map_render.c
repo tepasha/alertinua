@@ -18,6 +18,8 @@
 #define LCD_HOST      SPI2_HOST
 #define LCD_PCLK_HZ   (20 * 1000 * 1000)
 
+static const char *TAG = "MAP_RENDERING";
+
 static inline uint16_t rgb565(uint8_t r, uint8_t g, uint8_t b) {
     return (uint16_t) (((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3));
 }
@@ -304,7 +306,11 @@ esp_lcd_panel_handle_t display_init() {
         .pin_bit_mask = 1ULL << PIN_BL,
         .mode = GPIO_MODE_OUTPUT,
     };
-    ESP_ERROR_CHECK(gpio_config(&bl_cfg));
+
+    esp_err_t err = gpio_config(&bl_cfg);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "gpio_config: %d", err);
+    }
     gpio_set_level(PIN_BL, 1); /* підсвітка увімкнена */
 
     spi_bus_config_t buscfg = {
@@ -315,7 +321,11 @@ esp_lcd_panel_handle_t display_init() {
         .quadhd_io_num = -1,
         .max_transfer_sz = MAP_DISPLAY_W * MAP_DISPLAY_H * sizeof(uint16_t),
     };
-    ESP_ERROR_CHECK(spi_bus_initialize(LCD_HOST, &buscfg, SPI_DMA_CH_AUTO));
+
+    err = spi_bus_initialize(LCD_HOST, &buscfg, SPI_DMA_CH_AUTO);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "spi_bus_initialize: %d", err);
+    }
 
     esp_lcd_panel_io_handle_t io_handle = NULL;
     esp_lcd_panel_io_spi_config_t io_config = {
@@ -327,7 +337,10 @@ esp_lcd_panel_handle_t display_init() {
         .spi_mode = 0,
         .trans_queue_depth = 10,
     };
-    ESP_ERROR_CHECK(esp_lcd_new_panel_io_spi((esp_lcd_spi_bus_handle_t) LCD_HOST, &io_config, &io_handle));
+    err = esp_lcd_new_panel_io_spi((esp_lcd_spi_bus_handle_t) LCD_HOST, &io_config, &io_handle);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "esp_lcd_new_panel_io_spi: %d", err);
+    }
 
     esp_lcd_panel_handle_t panel_handle = NULL;
     esp_lcd_panel_dev_config_t panel_config = {
@@ -335,21 +348,44 @@ esp_lcd_panel_handle_t display_init() {
         .rgb_ele_order = LCD_RGB_ELEMENT_ORDER_BGR, /* якщо кольори переплутані - зміни на _RGB */
         .bits_per_pixel = 16,
     };
-    ESP_ERROR_CHECK(esp_lcd_new_panel_st7789(io_handle, &panel_config, &panel_handle));
+    err = esp_lcd_new_panel_st7789(io_handle, &panel_config, &panel_handle);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "esp_lcd_new_panel_st7789: %d", err);
+    }
 
-    ESP_ERROR_CHECK(esp_lcd_panel_reset(panel_handle));
-    ESP_ERROR_CHECK(esp_lcd_panel_init(panel_handle));
-    ESP_ERROR_CHECK(esp_lcd_panel_invert_color(panel_handle, true)); /* потрібно для цієї IPS-панелі */
+    err = esp_lcd_panel_reset(panel_handle);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "esp_lcd_panel_reset: %d", err);
+    }
+    err = esp_lcd_panel_init(panel_handle);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "esp_lcd_new_panel_st7789: %d", err);
+    }
+    err = esp_lcd_panel_invert_color(panel_handle, true);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "esp_lcd_panel_invert_color: %d", err);
+    }
 
     /* Панель фізично 135x240 (портрет); повертаємо в альбомну орієнтацію
      * 240x135, під яку згенеровано координати мапи. Зсув (gap) теж
      * міняється місцями разом з осями. Якщо картинка виявиться зсунутою,
      * підправ ці два числа чи прапорці mirror нижче. */
-    ESP_ERROR_CHECK(esp_lcd_panel_swap_xy(panel_handle, true));
-    ESP_ERROR_CHECK(esp_lcd_panel_mirror(panel_handle, false, true));
-    ESP_ERROR_CHECK(esp_lcd_panel_set_gap(panel_handle, 40, 52));
-
-    ESP_ERROR_CHECK(esp_lcd_panel_disp_on_off(panel_handle, true));
+    err = esp_lcd_panel_swap_xy(panel_handle, true);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "esp_lcd_panel_swap_xy: %d", err);
+    }
+    err = esp_lcd_panel_mirror(panel_handle, false, true);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "esp_lcd_panel_mirror: %d", err);
+    }
+    err = esp_lcd_panel_set_gap(panel_handle, 40, 52);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "esp_lcd_panel_set_gap: %d", err);
+    }
+    err = esp_lcd_panel_disp_on_off(panel_handle, true);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "esp_lcd_panel_disp_on_off: %d", err);
+    }
 
     return panel_handle;
 }
