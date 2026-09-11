@@ -9,13 +9,14 @@
 #include "components/scraping/scraping.h"
 
 static const char *TAG = "MAIN";
-static esp_err_t err;
 
 static void on_setup_button_long_press() {
     wifi_manager_start_provisioning();
 }
 
 void app_main() {
+    static esp_err_t err;
+
     //init display
     esp_lcd_panel_handle_t panel = display_init();
     uint16_t *fb = heap_caps_malloc(MAP_DISPLAY_W * MAP_DISPLAY_H * sizeof(uint16_t), MALLOC_CAP_DMA);
@@ -29,7 +30,7 @@ void app_main() {
     ESP_LOGE(TAG, "Read API: %s, Token: %s", ALERT_API, ALERT_TOKEN);
 
     if (!ALERT_API || !ALERT_TOKEN) {
-        ESP_LOGE(TAG,"Can't read API and Token");
+        ESP_LOGE(TAG, "Can't read API and Token");
         render_draw_err_banner(fb);
     }
 
@@ -51,7 +52,8 @@ void app_main() {
     }
 
     if (!wifi_manager_connect_sta()) {
-        ESP_LOGE(TAG, "Failed to connect to WiFi. Hold the setup button for %d s to reconfigure.", LONG_PRESS_MS / 1000);
+        ESP_LOGE(TAG, "Failed to connect to WiFi. Hold the setup button for %d s to reconfigure.",
+                 LONG_PRESS_MS / 1000);
         button_start_long_press_watch(SETUP_BUTTON_GPIO, LONG_PRESS_MS, on_setup_button_long_press);
     } else {
         //scraping
@@ -64,6 +66,7 @@ void app_main() {
             render_draw_err_banner(fb);
         }
     }
+
     err = esp_lcd_panel_draw_bitmap(panel, 0, 0, MAP_DISPLAY_W, MAP_DISPLAY_H, fb);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "esp_lcd_panel_draw_bitmap: %d", err);
