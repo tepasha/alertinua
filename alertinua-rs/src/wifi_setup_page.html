@@ -1,1 +1,234 @@
-<!DOCTYPE html><html lang="uk"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>ROBCO INDUSTRIES // WIFI TERMINAL</title><style>  @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap');  :root{    --green: #4ade5a;    --green-dim: #1f6b2a;    --green-glow: #6cff7a;    --bg: #050b05;  }  *{ box-sizing: border-box; }  html, body{    height: 100%;    margin: 0;    background: var(--bg);    color: var(--green);    font-family: 'Share Tech Mono', monospace;  }  body{    display: flex;    align-items: center;    justify-content: center;    padding: 24px;    min-height: 100vh;  }  /* CRT screen container */  .screen{    position: relative;    width: 100%;    max-width: 420px;    background: radial-gradient(ellipse at center, #08150a 0%, #020602 100%);    border: 3px solid var(--green-dim);    border-radius: 14px;    box-shadow:      0 0 0 4px #0a0a0a,      0 0 20px rgba(76, 222, 90, 0.25),      inset 0 0 60px rgba(0, 0, 0, 0.8);    padding: 22px 22px 18px;    overflow: hidden;  }  /* scanlines + flicker overlay */  .screen::before{    content: "";    position: absolute;    inset: 0;    pointer-events: none;    background: repeating-linear-gradient(      to bottom,      rgba(0,0,0,0.15) 0px,      rgba(0,0,0,0.15) 1px,      transparent 2px,      transparent 3px    );    mix-blend-mode: multiply;    z-index: 3;  }  .screen::after{    content: "";    position: absolute;    inset: 0;    pointer-events: none;    background: rgba(76, 222, 90, 0.03);    animation: flicker 4s infinite;    z-index: 2;  }  @keyframes flicker{    0%, 100% { opacity: 1; }    92% { opacity: 1; }    93% { opacity: 0.6; }    94% { opacity: 1; }    96% { opacity: 0.8; }    97% { opacity: 1; }  }  .content{ position: relative; z-index: 4; }  .brand{    font-size: 12px;    letter-spacing: 2px;    color: var(--green-dim);    border-bottom: 1px dashed var(--green-dim);    padding-bottom: 8px;    margin-bottom: 14px;    display: flex;    justify-content: space-between;  }  h2{    margin: 0 0 4px;    font-size: 22px;    letter-spacing: 3px;    text-shadow: 0 0 6px var(--green-glow), 0 0 14px var(--green-glow);  }  .subtitle{    font-size: 11px;    color: var(--green-dim);    margin-bottom: 18px;    letter-spacing: 1px;  }  .divider{    border: none;    border-top: 1px solid var(--green-dim);    margin: 16px 0;  }  label{    display: block;    font-size: 12px;    letter-spacing: 1px;    margin-bottom: 6px;    text-shadow: 0 0 4px var(--green-glow);  }  label::before{    content: "> ";  }  input{    width: 100%;    padding: 10px 8px;    margin: 0 0 18px;    background: #020a02;    border: 1px solid var(--green-dim);    color: var(--green-glow);    font-family: 'Share Tech Mono', monospace;    font-size: 15px;    letter-spacing: 1px;    outline: none;    box-shadow: inset 0 0 8px rgba(76, 222, 90, 0.15);  }  input::placeholder{    color: var(--green-dim);    opacity: 0.7;  }  input:focus{    border-color: var(--green-glow);    box-shadow: 0 0 10px rgba(108, 255, 122, 0.5), inset 0 0 8px rgba(76, 222, 90, 0.2);  }  button{    width: 100%;    padding: 12px;    background: #0c1f0d;    color: var(--green-glow);    border: 1px solid var(--green);    border-radius: 2px;    font-family: 'Share Tech Mono', monospace;    font-size: 15px;    letter-spacing: 3px;    cursor: pointer;    text-shadow: 0 0 6px var(--green-glow);    transition: all 0.15s ease;  }  button:hover{    background: var(--green);    color: #041004;    box-shadow: 0 0 16px var(--green-glow);  }  button:active{    transform: scale(0.98);  }  .footer-note{    margin-top: 16px;    font-size: 10px;    color: var(--green-dim);    text-align: center;    letter-spacing: 1px;  }  .status-dot{    display: inline-block;    width: 6px;    height: 6px;    background: var(--green-glow);    border-radius: 50%;    margin-right: 6px;    box-shadow: 0 0 6px var(--green-glow);    animation: blink 1.5s infinite;  }  @keyframes blink{    0%, 49% { opacity: 1; }    50%, 100% { opacity: 0.2; }  }</style></head><body><div class="screen">  <div class="content">    <div class="brand">      <span>ROBCO INDUSTRIES™</span>      <span>(C) 2075</span>    </div>    <h2>WIFI SETUP</h2>    <div class="subtitle"><span class="status-dot"></span>NETWORK CONFIGURATION MODULE</div>    <hr class="divider">    <form method="POST" action="/save">      <label for="ssid">Network Name (SSID)</label>      <input id="ssid" name="ssid" maxlength="31" required placeholder="ENTER NETWORK NAME">      <label for="password">Password</label>      <input id="password" name="password" type="password" maxlength="63" placeholder="ENTER ACCESS CODE">      <button type="submit">SAVE &amp; REBOOT</button>    </form>    <div class="footer-note">      WAR NEVER CHANGES // TERMINAL READY    </div>  </div></div></body></html>
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>ROBCO INDUSTRIES // WIFI TERMINAL</title>
+    <style>  @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap');
+
+    :root {
+        --green: #4ade5a;
+        --green-dim: #1f6b2a;
+        --green-glow: #6cff7a;
+        --bg: #050b05;
+    }
+
+    * {
+        box-sizing: border-box;
+    }
+
+    html, body {
+        height: 100%;
+        margin: 0;
+        background: var(--bg);
+        color: var(--green);
+        font-family: 'Share Tech Mono', monospace;
+    }
+
+    body {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 24px;
+        min-height: 100vh;
+    }
+
+    /* CRT screen container */
+    .screen {
+        position: relative;
+        width: 100%;
+        max-width: 420px;
+        background: radial-gradient(ellipse at center, #08150a 0%, #020602 100%);
+        border: 3px solid var(--green-dim);
+        border-radius: 14px;
+        box-shadow: 0 0 0 4px #0a0a0a, 0 0 20px rgba(76, 222, 90, 0.25), inset 0 0 60px rgba(0, 0, 0, 0.8);
+        padding: 22px 22px 18px;
+        overflow: hidden;
+    }
+
+    /* scanlines + flicker overlay */
+    .screen::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        background: repeating-linear-gradient(to bottom, rgba(0, 0, 0, 0.15) 0px, rgba(0, 0, 0, 0.15) 1px, transparent 2px, transparent 3px);
+        mix-blend-mode: multiply;
+        z-index: 3;
+    }
+
+    .screen::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        background: rgba(76, 222, 90, 0.03);
+        animation: flicker 4s infinite;
+        z-index: 2;
+    }
+
+    @keyframes flicker {
+        0%, 100% {
+            opacity: 1;
+        }
+        92% {
+            opacity: 1;
+        }
+        93% {
+            opacity: 0.6;
+        }
+        94% {
+            opacity: 1;
+        }
+        96% {
+            opacity: 0.8;
+        }
+        97% {
+            opacity: 1;
+        }
+    }
+
+    .content {
+        position: relative;
+        z-index: 4;
+    }
+
+    .brand {
+        font-size: 12px;
+        letter-spacing: 2px;
+        color: var(--green-dim);
+        border-bottom: 1px dashed var(--green-dim);
+        padding-bottom: 8px;
+        margin-bottom: 14px;
+        display: flex;
+        justify-content: space-between;
+    }
+
+    h2 {
+        margin: 0 0 4px;
+        font-size: 22px;
+        letter-spacing: 3px;
+        text-shadow: 0 0 6px var(--green-glow), 0 0 14px var(--green-glow);
+    }
+
+    .subtitle {
+        font-size: 11px;
+        color: var(--green-dim);
+        margin-bottom: 18px;
+        letter-spacing: 1px;
+    }
+
+    .divider {
+        border: none;
+        border-top: 1px solid var(--green-dim);
+        margin: 16px 0;
+    }
+
+    label {
+        display: block;
+        font-size: 12px;
+        letter-spacing: 1px;
+        margin-bottom: 6px;
+        text-shadow: 0 0 4px var(--green-glow);
+    }
+
+    label::before {
+        content: "> ";
+    }
+
+    input {
+        width: 100%;
+        padding: 10px 8px;
+        margin: 0 0 18px;
+        background: #020a02;
+        border: 1px solid var(--green-dim);
+        color: var(--green-glow);
+        font-family: 'Share Tech Mono', monospace;
+        font-size: 15px;
+        letter-spacing: 1px;
+        outline: none;
+        box-shadow: inset 0 0 8px rgba(76, 222, 90, 0.15);
+    }
+
+    input::placeholder {
+        color: var(--green-dim);
+        opacity: 0.7;
+    }
+
+    input:focus {
+        border-color: var(--green-glow);
+        box-shadow: 0 0 10px rgba(108, 255, 122, 0.5), inset 0 0 8px rgba(76, 222, 90, 0.2);
+    }
+
+    button {
+        width: 100%;
+        padding: 12px;
+        background: #0c1f0d;
+        color: var(--green-glow);
+        border: 1px solid var(--green);
+        border-radius: 2px;
+        font-family: 'Share Tech Mono', monospace;
+        font-size: 15px;
+        letter-spacing: 3px;
+        cursor: pointer;
+        text-shadow: 0 0 6px var(--green-glow);
+        transition: all 0.15s ease;
+    }
+
+    button:hover {
+        background: var(--green);
+        color: #041004;
+        box-shadow: 0 0 16px var(--green-glow);
+    }
+
+    button:active {
+        transform: scale(0.98);
+    }
+
+    .footer-note {
+        margin-top: 16px;
+        font-size: 10px;
+        color: var(--green-dim);
+        text-align: center;
+        letter-spacing: 1px;
+    }
+
+    .status-dot {
+        display: inline-block;
+        width: 6px;
+        height: 6px;
+        background: var(--green-glow);
+        border-radius: 50%;
+        margin-right: 6px;
+        box-shadow: 0 0 6px var(--green-glow);
+        animation: blink 1.5s infinite;
+    }
+
+    @keyframes blink {
+        0%, 49% {
+            opacity: 1;
+        }
+        50%, 100% {
+            opacity: 0.2;
+        }
+    }</style>
+</head>
+<body>
+<div class="screen">
+    <div class="content">
+        <div class="brand"><span>ROBCO INDUSTRIES™</span> <span>(C) 2075</span></div>
+        <h2>WIFI SETUP</h2>
+        <div class="subtitle"><span class="status-dot"></span>NETWORK CONFIGURATION MODULE</div>
+        <hr class="divider">
+        <form method="POST" action="/save"><label for="ssid">Network Name (SSID)</label> <input id="ssid" name="ssid"
+                                                                                                maxlength="31" required
+                                                                                                placeholder="ENTER NETWORK NAME">
+            <label for="password">Password</label> <input id="password" name="password" type="password" maxlength="63"
+                                                          placeholder="ENTER ACCESS CODE">
+            <button type="submit">SAVE &amp; REBOOT</button>
+        </form>
+        <div class="footer-note"> WAR NEVER CHANGES // TERMINAL READY</div>
+    </div>
+</div>
+</body>
+</html>
