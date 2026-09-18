@@ -1,0 +1,14 @@
+[build]
+target = "xtensa-esp32-espidf"
+
+[target.xtensa-esp32-espidf]
+linker = "ldproxy"
+# runner = "espflash flash --monitor"
+
+[unstable]
+build-std = ["std", "panic_abort"]
+
+[env]
+MCU = "esp32"
+# Ставте актуальну гілку/тег ESP-IDF, яку встановив espup / ESP-IDF v5.x
+ESP_IDF_VERSION = "v5.2.1"
