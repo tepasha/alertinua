@@ -23,7 +23,7 @@ esp_err_t light_sensor_init(void) {
 
     adc_oneshot_chan_cfg_t chan_cfg = {
         .bitwidth = ADC_BITWIDTH_DEFAULT,
-        .atten = ADC_ATTEN_DB_11, // повний діапазон 0..~3.3В
+        .atten = ADC_ATTEN_DB_12, // повний діапазон 0..~3.3В
     };
     err = adc_oneshot_config_channel(s_adc_handle, LIGHT_SENSOR_ADC_CHANNEL, &chan_cfg);
     if (err != ESP_OK) {

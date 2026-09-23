@@ -1,4 +1,5 @@
 .pio
-.idea
 .vscode
 .env
+build
+managed_components
