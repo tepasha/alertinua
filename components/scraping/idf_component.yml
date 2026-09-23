@@ -1,0 +1,4 @@
+## IDF Component Manager Manifest
+## cJSON was removed from ESP-IDF core in v5.0 and now lives in the component registry.
+dependencies:
+  espressif/cjson: "^1.7.17"
