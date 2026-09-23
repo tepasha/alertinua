@@ -1,10 +1,13 @@
 #pragma once
+#include <stddef.h>
 
-#include "esp_event.h"
-#include "esp_http_client.h"
-
-void wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t event_id, void *event_data);
-bool wifi_connect_sta();
-esp_err_t http_event_handler(esp_http_client_event_t *evt);
-int api_fetch_bearer_auth(const char *url, const char *token, char *outBuf);
-void get_api(char apiurl[], char token[]);
+/*
+ * Виконує HTTP GET на url із заголовком "Authorization: Bearer <token>" та
+ * "Accept: application/json". Тіло відповіді копіюється в outBuf (не більше
+ * outBufSize-1 байт + завершальний '\0') - буфер виділяє й передає викликач,
+ * функція гарантовано не вийде за його межі.
+ *
+ * Повертає HTTP-статус-код (200, 401, 404, ...), або -1 при помилці
+ * транспортного рівня (немає з'єднання, тайм-аут, TLS-помилка тощо).
+ */
+int api_fetch_bearer_auth(const char *url, const char *token, char *outBuf, size_t outBufSize);

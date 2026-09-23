@@ -1,0 +1,106 @@
+menu "Alertinua Configuration"
+
+    menu "Alerts API"
+        config ALERTINUA_API_URL
+            string "URL API тривог"
+            default "https://api.alerts.in.ua/v1/alerts/active.json"
+            help
+                Кінцева точка REST API, яку опитує пристрій. За замовчуванням -
+                публічний API alerts.in.ua (див. https://alerts.in.ua/).
+
+        config ALERTINUA_API_TOKEN
+            string "API токен (Bearer)"
+            default ""
+            help
+                Токен доступу до API. Реєструється на сайті сервісу тривог.
+                Порожній токен - запити повертатимуть 401/403, пристрій
+                покаже банер помилки, але не зависне.
+
+        config ALERTINUA_OBLAST_NAME
+            string "Назва області для стеження"
+            default "Київська область"
+            help
+                Точна назва області українською, як вона зустрічається у полі
+                "location_oblast" відповіді API (і як записана у
+                components/map/ukraine_map_data.h). Саме за цією областю
+                визначається, чи вмикати сирену/індикацію тривоги.
+
+        config ALERTINUA_POLL_INTERVAL_SEC
+            int "Інтервал опитування API (секунди)"
+            default 60
+            range 10 3600
+            help
+                Як часто fetch_task звертається до API. Занадто малий
+                інтервал - зайве навантаження на мережу/API та CPU.
+    endmenu
+
+    menu "Індикація та підсвітка"
+        config ALERTINUA_BRIGHTNESS_MIN_PERCENT
+            int "Мінімальна яскравість підсвітки, %"
+            default 15
+            range 0 100
+
+        config ALERTINUA_BRIGHTNESS_MAX_PERCENT
+            int "Максимальна яскравість підсвітки, %"
+            default 100
+            range 0 100
+
+        config ALERTINUA_BRIGHTNESS_PERIOD_MS
+            int "Період циклу регулятора яскравості, мс"
+            default 500
+            range 50 5000
+            help
+                Як часто brightness_ctrl_task перечитує датчик освітлення і
+                перераховує PI-регулятор.
+
+        config ALERTINUA_INDICATOR_PERIOD_MS
+            int "Період миготіння індикаторів (Status/Wi-Fi LED), мс"
+            default 500
+            range 100 5000
+
+        config ALERTINUA_SIREN_MAX_SEC
+            int "Максимальна безперервна тривалість сирени, сек"
+            default 120
+            range 5 3600
+            help
+                Запобіжник: навіть якщо зумер не отримав команду "стоп",
+                він сам замовкне після цього часу.
+    endmenu
+
+    menu "Wi-Fi"
+        config ALERTINUA_DEFAULT_WIFI_SSID
+            string "SSID за замовчуванням (якщо в NVS нічого не збережено)"
+            default "your-wifi-ssid"
+
+        config ALERTINUA_DEFAULT_WIFI_PASSWORD
+            string "Пароль за замовчуванням (якщо в NVS нічого не збережено)"
+            default "your-wifi-password"
+
+        config ALERTINUA_PROVISIONING_AP_SSID
+            string "SSID точки доступу режиму налаштування (SoftAP)"
+            default "ESP32-Setup"
+
+        config ALERTINUA_PROVISIONING_AP_PASSWORD
+            string "Пароль точки доступу режиму налаштування (порожньо = відкрита мережа)"
+            default ""
+
+        config ALERTINUA_AUTO_PROVISION_AFTER_FAILURES
+            int "Автоматичний перехід у provisioning після N невдалих спроб підключення"
+            default 10
+            range 1 100
+    endmenu
+
+    menu "Надійність"
+        config ALERTINUA_WDT_TIMEOUT_SEC
+            int "Тайм-аут Task Watchdog Timer, сек"
+            default 10
+            range 3 60
+            help
+                Має узгоджуватись із CONFIG_ESP_TASK_WDT_TIMEOUT_S у
+                "Component config -> Hardware Watchdog Timers" - це лише
+                довідкове значення, яке компонент indicators/логи можуть
+                показувати користувачу; фактичний тайм-аут задає
+                ESP_TASK_WDT_TIMEOUT_S (див. sdkconfig.defaults).
+    endmenu
+
+endmenu

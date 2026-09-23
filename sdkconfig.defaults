@@ -1,0 +1,27 @@
+# sdkconfig.defaults - застосовується автоматично при "idf.py set-target esp32"
+# (або будь-якому першому build/menuconfig, якщо ще немає файла sdkconfig).
+# Значення нижче можна змінити пізніше через `idf.py menuconfig` - цей файл
+# лише задає стартові дефолти проєкту, а не жорсткі константи.
+#
+# Примітка: точні назви CONFIG_ESP_TASK_WDT_* дещо відрізняються між
+# версіями ESP-IDF (v5.0 vs новіші v5.x). Якщо після `idf.py menuconfig`
+# якийсь із рядків нижче не застосувався (немає такого пункту), знайдіть
+# відповідний пункт вручну в "Component config -> Hardware Watchdog Timers"
+# і "Component config -> FreeRTOS -> Kernel".
+
+# --- Task Watchdog Timer (п.5.1 чек-листа: реальна перевірка, що задачі не зависають) ---
+CONFIG_ESP_TASK_WDT_EN=y
+CONFIG_ESP_TASK_WDT_INIT=y
+CONFIG_ESP_TASK_WDT_PANIC=y
+CONFIG_ESP_TASK_WDT_TIMEOUT_S=10
+CONFIG_ESP_TASK_WDT_CHECK_IDLE_TASK_CPU0=y
+
+# --- FreeRTOS runtime stats (п.6.1/6.4: вимірювання завантаження CPU) ---
+CONFIG_FREERTOS_USE_TRACE_FACILITY=y
+CONFIG_FREERTOS_GENERATE_RUN_TIME_STATS=y
+
+# --- main-задача виділяє кілька задач одразу при старті, тримаємо стек з запасом ---
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=6144
+
+# --- Ціль за замовчуванням: оригінальний ESP32 (LILYGO T-Display, ST7789, НЕ S3/AMOLED) ---
+CONFIG_IDF_TARGET="esp32"

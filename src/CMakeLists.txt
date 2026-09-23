@@ -1,6 +1,6 @@
-file(GLOB_RECURSE SRC_SOURCES "*.cpp" "*.c")
-
 idf_component_register(
+    SRCS "main.c"
+
     SRC_DIRS
         "."
         "../components/map"
@@ -8,12 +8,34 @@ idf_component_register(
         "../components/buzzer"
         "../components/wifi_manager"
         "../components/scraping"
+
     INCLUDE_DIRS
         "."
-        "../components/env"
+        "../components/app_state"
+        "../components/indicators"
+        "../components/brightness_ctrl"
+        "../env"
         "../components/wifi_manager"
         "../components/buzzer"
         "../components/map"
         "../components/button"
         "../components/scraping"
+
+    REQUIRES
+        freertos
+        log
+        esp_common
+        esp_system
+        esp_timer
+        nvs_flash
+        heap
+        esp_lcd
+        app_state
+        button
+        buzzer
+        indicators
+        brightness_ctrl
+        wifi_manager
+        scraping
+        map
 )

@@ -4,6 +4,7 @@
 #include "esp_lcd_panel_vendor.h"
 #include "esp_log.h"
 #include <driver/gpio.h>
+#include <driver/spi_master.h>
 
 #include "map_render.h"
 #include "ukraine_map_data.h"
@@ -301,7 +302,7 @@ void render_draw_err_banner(uint16_t *fb) {
     fb_draw_glyph(fb, text_x + (glyph_w + gap) * 2, text_y, glyph_R, red_bright, scale);
 }
 
-esp_lcd_panel_handle_t display_init() {
+esp_lcd_panel_handle_t display_init(void) {
     gpio_config_t bl_cfg = {
         .pin_bit_mask = 1ULL << PIN_BL,
         .mode = GPIO_MODE_OUTPUT,
