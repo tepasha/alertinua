@@ -1,3 +1,0 @@
-(sym_lib_table
-  (lib (name "alertinua")(type "KiCad")(uri "${KIPRJMOD}/alertinua.kicad_sym")(options "")(descr "Власні символи alertinua (ESP32 modul, ST7789)"))
-)
