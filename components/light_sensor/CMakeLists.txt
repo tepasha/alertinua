@@ -1,5 +1,5 @@
 idf_component_register(
     SRCS "light_sensor.c"
     INCLUDE_DIRS "."
-    REQUIRES esp_adc log
+    REQUIRES adc_shared log
 )

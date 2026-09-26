@@ -2,6 +2,7 @@
 # Компілюють РЕАЛЬНІ файли прошивки напряму:
 #   - components/scraping/alerts_parser.c      (потрібен libcjson-dev)
 #   - components/brightness_ctrl/brightness_ctrl_step.c (без залежностей)
+#   - components/battery/battery_percent.c              (без залежностей)
 # Юніт-тест фреймворк - справжній ThrowTheSwitch/Unity (той самий, що й
 # всередині ESP-IDF), ввендорено в test_host/unity/.
 #
@@ -20,7 +21,7 @@ UNITY_SRC := unity/unity.c
 
 .PHONY: all run clean
 
-all: $(BUILD)/test_alerts_parser $(BUILD)/test_brightness_ctrl
+all: $(BUILD)/test_alerts_parser $(BUILD)/test_brightness_ctrl $(BUILD)/test_battery
 
 $(BUILD):
 	mkdir -p $(BUILD)
@@ -43,9 +44,18 @@ $(BUILD)/test_brightness_ctrl: test_brightness_ctrl.c $(UNITY_SRC) \
 		-I $(ROOT)/components/brightness_ctrl \
 		$^ -lm -o $@
 
+# --- battery_percent: крива заряду Li-Pol, без жодних залежностей ---
+$(BUILD)/test_battery: test_battery.c $(UNITY_SRC) \
+		$(ROOT)/components/battery/battery_percent.c | $(BUILD)
+	$(CC) $(CFLAGS) \
+		-I unity \
+		-I $(ROOT)/components/battery \
+		$^ -o $@
+
 run: all
 	@echo "=== test_alerts_parser ===" && ./$(BUILD)/test_alerts_parser
 	@echo "=== test_brightness_ctrl ===" && ./$(BUILD)/test_brightness_ctrl
+	@echo "=== test_battery ===" && ./$(BUILD)/test_battery
 
 clean:
 	rm -rf $(BUILD)

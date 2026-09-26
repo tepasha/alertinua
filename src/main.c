@@ -8,6 +8,7 @@
 
 #include "app_state.h"
 #include "indicators.h"
+#include "battery.h"
 #include "wifi_manager.h"
 
 /* Усі задачі FreeRTOS живуть у task/ - по папці-компоненту на задачу */
@@ -47,6 +48,9 @@ void app_main(void) {
     }
 
     indicators_init();
+    if (battery_init() != ESP_OK) {
+        ESP_LOGW(TAG, "не вдалось ініціалізувати вимірювання батареї");
+    }
     brightness_task_start();
     buzzer_task_start();
     button_task_start(SETUP_BUTTON_GPIO, LONG_PRESS_MS, on_setup_button_long_press);

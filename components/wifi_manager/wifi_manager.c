@@ -17,6 +17,7 @@
 #include "wifi_manager.h"
 #include "wifi_creds.h"
 #include "settings.h"
+#include "battery.h"
 #include "alerts_parser.h" // список локацій API для вибору області
 
 static const char *TAG = "wifi_manager";
@@ -51,6 +52,7 @@ static const char *SETTINGS_PAGE_HEAD =
 "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"
 "<title>alertinua // SETUP</title>"
 "<style>"
+"  *{box-sizing:border-box;}"
 "  body{font-family:sans-serif;background:#111;color:#4ade5a;display:flex;"
 "       align-items:center;justify-content:center;min-height:100vh;margin:0;padding:24px;}"
 "  .box{max-width:360px;width:100%;border:1px solid #1f6b2a;border-radius:10px;padding:20px;}"
@@ -59,10 +61,17 @@ static const char *SETTINGS_PAGE_HEAD =
 "  .hint{font-size:12px;color:#2f9a3c;margin:4px 0 0;}"
 "  input,select{width:100%;padding:8px;background:#000;border:1px solid #1f6b2a;color:#6cff7a;box-sizing:border-box;}"
 "  button{width:100%;margin-top:16px;padding:10px;background:#1f6b2a;color:#fff;border:none;border-radius:4px;}"
+"  .batt{border:1px solid #1f6b2a;border-radius:6px;padding:10px;font-size:14px;}"
+"  .bar{height:10px;background:#000;border:1px solid #1f6b2a;border-radius:3px;margin-top:6px;overflow:hidden;}"
+"  .bar span{display:block;height:100%;background:#4ade5a;}"
+"  .bar span.low{background:#e0483e;}"
 "</style>"
 "</head>"
 "<body><div class=\"box\">"
-"<h2>Налаштування</h2>"
+"<h2>Налаштування</h2>";
+
+/* Після блоку батареї (генерується в root_get_handler) - сама форма. */
+static const char *SETTINGS_PAGE_FORM =
 "<form method=\"POST\" action=\"/save\">"
 "  <h3>Область</h3>"
 "  <label for=\"oblast\">Область для сирени та індикації</label>"
@@ -214,6 +223,25 @@ static esp_err_t root_get_handler(httpd_req_t *req) {
 
     httpd_resp_set_type(req, "text/html");
     httpd_resp_sendstr_chunk(req, SETTINGS_PAGE_HEAD);
+
+    // Заряд батареї - вимірюється в момент відкриття сторінки.
+    char batt[320];
+    battery_status_t bs = battery_read();
+    if (!bs.valid) {
+        snprintf(batt, sizeof(batt), "<div class=\"batt\">Батарея: немає даних</div>");
+    } else if (bs.external_power) {
+        snprintf(batt, sizeof(batt),
+                 "<div class=\"batt\">Живлення від USB (%d.%02d В) — батарея заряджається або не підключена</div>",
+                 bs.voltage_mv / 1000, (bs.voltage_mv % 1000) / 10);
+    } else {
+        snprintf(batt, sizeof(batt),
+                 "<div class=\"batt\">Батарея: <b>%d%%</b> · %d.%02d В"
+                 "<div class=\"bar\"><span%s style=\"width:%d%%\"></span></div></div>",
+                 bs.percent, bs.voltage_mv / 1000, (bs.voltage_mv % 1000) / 10,
+                 bs.percent <= 20 ? " class=\"low\"" : "", bs.percent);
+    }
+    httpd_resp_sendstr_chunk(req, batt);
+    httpd_resp_sendstr_chunk(req, SETTINGS_PAGE_FORM);
 
     // value - індекс у списку локацій API: так у формі не треба передавати
     // й розкодовувати кириличні назви, а перевірка вводу - просто межі індексу.

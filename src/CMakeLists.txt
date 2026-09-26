@@ -13,6 +13,7 @@ idf_component_register(
         nvs_flash
         app_state
         indicators
+        battery
         wifi_manager
         wifi_task
         fetch_task

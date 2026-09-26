@@ -1,0 +1,137 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1120" height="930" viewBox="0 0 1120 930" font-family="Arial, Helvetica, sans-serif">
+  <title>Схема підключення alertinua до LILYGO T-Display</title>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#E8A33D"/>
+    </marker>
+  </defs>
+
+  <!-- фон: явно білий, щоб схема читалась і в темній темі GitHub -->
+  <rect x="0" y="0" width="1120" height="930" fill="#FFFFFF"/>
+
+  <text x="560" y="38" text-anchor="middle" font-size="22" font-weight="bold" fill="#121821">Схема підключення alertinua</text>
+
+  <!-- ===== Плата ===== -->
+  <rect x="300" y="60" width="420" height="480" rx="16" fill="#1F2A44" stroke="#121821" stroke-width="2"/>
+  <text x="510" y="92" text-anchor="middle" font-size="17" font-weight="bold" fill="#F5F2EC">LILYGO T-Display (ESP32)</text>
+  <!-- дисплей посередині плати -->
+  <rect x="442" y="170" width="135" height="240" rx="4" fill="#0B3D2E" stroke="#4ADE5A" stroke-width="1.5"/>
+  <text x="510" y="280" text-anchor="middle" font-size="15" fill="#4ADE5A">ST7789</text>
+  <text x="510" y="300" text-anchor="middle" font-size="15" fill="#4ADE5A">135×240</text>
+  <text x="510" y="322" text-anchor="middle" font-size="12" fill="#4ADE5A">(вбудований, SPI)</text>
+  <!-- кнопка BOOT унизу плати -->
+  <circle cx="430" cy="500" r="9" fill="#9AA5B4" stroke="#F5F2EC" stroke-width="1.5"/>
+  <text x="448" y="505" font-size="13" fill="#C9D1DC">BOOT = GPIO0 (вбудована)</text>
+
+  <!-- піни зліва (лівий ряд гребінки) -->
+  <rect x="294" y="324" width="12" height="12" fill="#E8A33D"/>
+  <text x="316" y="335" font-size="15" font-weight="bold" fill="#F5F2EC">GPIO2</text>
+  <rect x="294" y="394" width="12" height="12" fill="#E8A33D"/>
+  <text x="316" y="405" font-size="15" font-weight="bold" fill="#F5F2EC">GPIO15</text>
+  <rect x="294" y="464" width="12" height="12" fill="#E8A33D"/>
+  <text x="316" y="475" font-size="15" font-weight="bold" fill="#F5F2EC">GND</text>
+  <rect x="294" y="504" width="12" height="12" fill="#E8A33D"/>
+  <text x="316" y="515" font-size="15" font-weight="bold" fill="#F5F2EC">3V3</text>
+
+  <!-- піни справа (правий ряд гребінки) -->
+  <rect x="714" y="324" width="12" height="12" fill="#E8A33D"/>
+  <text x="704" y="335" text-anchor="end" font-size="15" font-weight="bold" fill="#F5F2EC">GPIO33</text>
+  <rect x="714" y="394" width="12" height="12" fill="#E8A33D"/>
+  <text x="704" y="405" text-anchor="end" font-size="15" font-weight="bold" fill="#F5F2EC">GPIO25</text>
+  <rect x="714" y="464" width="12" height="12" fill="#E8A33D"/>
+  <text x="704" y="475" text-anchor="end" font-size="15" font-weight="bold" fill="#F5F2EC">GND</text>
+
+  <!-- ===== Ліворуч: світлодіоди ===== -->
+  <g transform="translate(-40,0)">
+    <text x="200" y="290" text-anchor="middle" font-size="13" font-weight="bold" fill="#B8322B">Світлодіоди</text>
+    <g stroke="#121821" stroke-width="2" fill="none">
+      <!-- GPIO2 - R2 - LED1 -->
+      <line x1="334" y1="330" x2="300" y2="330"/>
+      <rect x="256" y="321" width="44" height="18" fill="#FFFFFF"/>
+      <line x1="256" y1="330" x2="212" y2="330"/>
+      <polygon points="212,318 212,342 190,330" fill="#E0483E" stroke="#121821"/>
+      <line x1="188" y1="318" x2="188" y2="342"/>
+      <line x1="188" y1="330" x2="130" y2="330"/>
+      <!-- GPIO15 - R3 - LED2 -->
+      <line x1="334" y1="400" x2="300" y2="400"/>
+      <rect x="256" y="391" width="44" height="18" fill="#FFFFFF"/>
+      <line x1="256" y1="400" x2="212" y2="400"/>
+      <polygon points="212,388 212,412 190,400" fill="#4A90D9" stroke="#121821"/>
+      <line x1="188" y1="388" x2="188" y2="412"/>
+      <line x1="188" y1="400" x2="130" y2="400"/>
+      <!-- катоди -> GND плати -->
+      <polyline points="130,330 130,470 334,470"/>
+    </g>
+    <circle cx="130" cy="400" r="4.5" fill="#121821"/>
+    <text x="278" y="312" text-anchor="middle" font-size="12" fill="#121821">R2 330 Ом</text>
+    <text x="200" y="364" text-anchor="middle" font-size="12" font-weight="bold" fill="#121821">LED1 тривога</text>
+    <text x="278" y="382" text-anchor="middle" font-size="12" fill="#121821">R3 330 Ом</text>
+    <text x="200" y="434" text-anchor="middle" font-size="12" font-weight="bold" fill="#121821">LED2 Wi-Fi</text>
+  </g>
+
+  <!-- ===== 3V3 з лівого боку плати -> верх фоторезистора (під платою) ===== -->
+  <polyline points="294,510 260,510 260,700 1090,700 1090,230 960,230 960,262" stroke="#B8322B" stroke-width="2" fill="none"/>
+  <text x="675" y="718" text-anchor="middle" font-size="12" fill="#B8322B">3V3 (з лівого боку плати)</text>
+
+  <!-- ===== Праворуч: датчик освітлення і зумер ===== -->
+  <g transform="translate(60,0)">
+    <text x="930" y="212" text-anchor="middle" font-size="13" font-weight="bold" fill="#B8322B">Датчик освітлення</text>
+    <g stroke="#121821" stroke-width="2" fill="none">
+      <!-- дільник: 3V3 - LDR - вузол (GPIO33) - R4 - GND -->
+      <rect x="888" y="262" width="24" height="40" fill="#FFFFFF"/>
+      <line x1="900" y1="302" x2="900" y2="420"/>
+      <line x1="666" y1="330" x2="900" y2="330"/>
+      <rect x="888" y="420" width="24" height="40" fill="#FFFFFF"/>
+      <!-- GPIO25 - R1 - зумер -->
+      <line x1="666" y1="400" x2="700" y2="400"/>
+      <rect x="700" y="391" width="44" height="18" fill="#FFFFFF"/>
+      <line x1="744" y1="400" x2="780" y2="400"/>
+      <rect x="780" y="386" width="40" height="28" rx="4" fill="#FFFFFF"/>
+      <polyline points="820,400 850,400 850,470"/>
+      <!-- спільна земля -> GND плати -->
+      <polyline points="900,460 900,470 666,470"/>
+    </g>
+    <circle cx="900" cy="330" r="4.5" fill="#121821"/>
+    <circle cx="850" cy="470" r="4.5" fill="#121821"/>
+    <line x1="836" y1="244" x2="880" y2="266" stroke="#E8A33D" stroke-width="2" marker-end="url(#arrow)"/>
+    <line x1="836" y1="264" x2="880" y2="286" stroke="#E8A33D" stroke-width="2" marker-end="url(#arrow)"/>
+    <text x="922" y="280" font-size="14" font-weight="bold" fill="#121821">LDR</text>
+    <text x="922" y="296" font-size="12" fill="#4A5568">фоторезистор</text>
+    <text x="922" y="438" font-size="14" font-weight="bold" fill="#121821">R4</text>
+    <text x="922" y="454" font-size="12" fill="#4A5568">10 кОм</text>
+    <text x="800" y="405" text-anchor="middle" font-size="12" font-weight="bold" fill="#121821">BZ</text>
+    <text x="722" y="382" text-anchor="middle" font-size="12" fill="#121821">R1 220 Ом</text>
+    <text x="800" y="378" text-anchor="middle" font-size="12" font-weight="bold" fill="#121821">П'єзозумер</text>
+  </g>
+
+  <!-- ===== Знизу: акумулятор у штатний роз'єм BAT ===== -->
+  <rect x="488" y="532" width="44" height="14" rx="2" fill="#F5F2EC" stroke="#121821" stroke-width="1.5"/>
+  <text x="510" y="526" text-anchor="middle" font-size="11" font-weight="bold" fill="#E8A33D">BAT</text>
+  <!-- червоний провід "+" розірвано вимикачем SW2 -->
+  <line x1="500" y1="546" x2="500" y2="560" stroke="#E0483E" stroke-width="2.5"/>
+  <line x1="500" y1="586" x2="500" y2="600" stroke="#E0483E" stroke-width="2.5"/>
+  <circle cx="500" cy="562" r="3" fill="#FFFFFF" stroke="#121821" stroke-width="2"/>
+  <circle cx="500" cy="584" r="3" fill="#FFFFFF" stroke="#121821" stroke-width="2"/>
+  <line x1="500" y1="584" x2="486" y2="564" stroke="#121821" stroke-width="2.5"/>
+  <line x1="520" y1="546" x2="520" y2="600" stroke="#121821" stroke-width="2.5"/>
+  <text x="492" y="598" text-anchor="end" font-size="14" font-weight="bold" fill="#E0483E">+</text>
+  <text x="530" y="598" font-size="14" font-weight="bold" fill="#121821">−</text>
+  <text x="478" y="570" text-anchor="end" font-size="13" font-weight="bold" fill="#121821">SW2</text>
+  <text x="478" y="586" text-anchor="end" font-size="12" fill="#4A5568">вимикач живлення</text>
+  <rect x="440" y="600" width="140" height="56" rx="8" fill="#FFF4D6" stroke="#121821" stroke-width="2"/>
+  <rect x="580" y="618" width="8" height="20" rx="2" fill="#121821"/>
+  <text x="510" y="626" text-anchor="middle" font-size="13" font-weight="bold" fill="#121821">Li-Pol 3.7 В</text>
+  <text x="510" y="644" text-anchor="middle" font-size="12" fill="#4A5568">300 мА·год</text>
+  <text x="604" y="614" font-size="13" font-weight="bold" fill="#121821">Акумулятор Li-Pol 602030</text>
+  <text x="604" y="632" font-size="12" fill="#4A5568">3.7 В, 300 мА·год, з платою захисту</text>
+  <text x="604" y="650" font-size="12" fill="#4A5568">у роз'єм BAT плати; заряджається від USB</text>
+
+  <!-- ===== Примітки ===== -->
+  <text x="40" y="758" font-size="14" fill="#121821">• Дисплей (SPI: GPIO19/18/5/16/23), його підсвітка (GPIO4) і кнопка BOOT (GPIO0) вже є на платі — підключати їх не треба.</text>
+  <text x="40" y="784" font-size="14" fill="#121821">• Сторони плати — як на гребінці; порядок пінів на схемі спрощено, звіряйтесь із підписами на платі.</text>
+  <text x="40" y="810" font-size="14" fill="#121821">• Датчик освітлення — лише на піни ADC1 (32, 33, 36–39): ADC2 не працює разом із Wi-Fi.</text>
+  <text x="40" y="836" font-size="14" fill="#121821">• Світлодіоди: анод (довга ніжка) — до резистора, катод — до GND. Зумер — пасивний п'єзо, керується ШІМ.</text>
+  <text x="40" y="862" font-size="14" fill="#121821">• Обидва піни GND плати з'єднані між собою — можна використовувати будь-який.</text>
+  <text x="40" y="888" font-size="14" fill="#121821">• SW2 — вимикач із фіксацією на «+» батареї. Від USB плата працює й при вимкненому SW2, але батарея тоді не заряджається.</text>
+  <text x="40" y="914" font-size="14" fill="#121821">• Заряд батареї плата вимірює сама: GPIO34 через вбудований дільник, GPIO14 його вмикає — додаткових дротів не треба.</text>
+</svg>

@@ -6,6 +6,7 @@
 #include "esp_task_wdt.h"
 
 #include "app_state.h"
+#include "battery.h"
 #include "monitor_task.h"
 
 static const char *TAG = "MONITOR";
@@ -39,6 +40,12 @@ static void monitor_task(void *arg) {
         app_state_get_fetch_stats(&last_fetch_us, &consecutive_failures);
         ESP_LOGI(TAG, "останній HTTP+JSON цикл: %lld us, невдач підряд: %u",
                  (long long)last_fetch_us, (unsigned)consecutive_failures);
+
+        battery_status_t bs = battery_read();
+        if (bs.valid) {
+            ESP_LOGI(TAG, "батарея: %d мВ, %d%%%s", bs.voltage_mv, bs.percent,
+                     bs.external_power ? " (живлення від USB)" : "");
+        }
     }
 }
 

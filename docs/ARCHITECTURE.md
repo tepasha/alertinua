@@ -105,7 +105,7 @@ state machine під час демонстрації (п.9.3).
 
 ```mermaid
 flowchart LR
-    LDR[LDR + дільник\nGPIO34 / ADC1_CH6] -->|"light_sensor_read_normalized()\n0.0..1.0"| CTRL
+    LDR[LDR + дільник\nGPIO33 / ADC1_CH5] -->|"light_sensor_read_normalized()\n0.0..1.0"| CTRL
     CTRL["PI-регулятор\n(brightness_ctrl_task)"] -->|"backlight_set_percent()"| PWM[LEDC PWM\nGPIO4]
     PWM --> BL[Підсвітка дисплея]
     CTRL -->|"app_state_set_brightness()"| STATE[(app_state)]
@@ -154,6 +154,10 @@ flowchart TD
     brightness_task --> backlight
     brightness_task --> app_state
     monitor_task --> app_state
+    monitor_task --> battery
+    wifi_manager --> battery
+    battery --> adc_shared
+    light_sensor --> adc_shared
 
     indicators --> app_state
     scraping --> map
