@@ -65,7 +65,8 @@ Wi-Fi (wifi_task) ──┐
 Модулі-компоненти (кожен зі своїм `CMakeLists.txt`, без циклічних
 залежностей): `app_state`, `button`, `buzzer`, `backlight`, `light_sensor`,
 `brightness_ctrl`, `indicators`, `wifi_manager`, `scraping` (HTTP + JSON
-парсинг), `map` (рендеринг мапи областей).
+парсинг), `map` (рендеринг мапи областей). Усі задачі FreeRTOS лежать
+окремо, у папці `task/` у корені проєкту (по підпапці-компоненту на задачу).
 
 ## 🛠️ Вимоги
 

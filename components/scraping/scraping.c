@@ -25,10 +25,9 @@ static esp_err_t http_event_handler(esp_http_client_event_t *evt) {
         return ESP_OK;
     }
 
+    // Chunked-відповіді теж підходять: esp_http_client віддає сюди вже
+    // розібрані дані без службових розмірів chunk-ів.
     http_recv_ctx_t *ctx = (http_recv_ctx_t *)evt->user_data;
-    if (esp_http_client_is_chunked_response(evt->client)) {
-        return ESP_OK; // цей простий парсер не підтримує chunked-відповіді
-    }
 
     if (ctx->written == 0) {
         memset(ctx->buf, 0, ctx->buf_size);

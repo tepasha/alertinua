@@ -1,19 +1,21 @@
 /*
  * Юніт-тести components/scraping/alerts_parser.c - справжній файл прошивки,
  * скомпільований тут БЕЗ ESP-IDF (заглушка esp_log.h + системний cJSON,
- * той самий upstream API, що й ESP-IDF-компонент "json"). Дивись
+ * той самий upstream API, що й ESP-IDF-компонент espressif/cjson). Дивись
  * docs/TESTING.md, як зібрати й прогнати (make -C test_host).
  *
+ * Формат відповіді IoT-ендпоінта alerts.in.ua
+ * (/v1/iot/active_air_raid_alerts_by_oblast.json): JSON-рядок із 27
+ * символів A/P/N у фіксованому порядку локацій.
+ *
  * Покриття:
- *  - валідний JSON із тривогою у вибраній області / деінде / без тривог
- *  - зіпсований JSON, відсутнє/невірного типу поле "alerts"
- *  - фільтрація за рівнем (лише "oblast", не "district"/"hromada")
- *  - фільтрація завершених тривог (finished_at) - як явний timestamp,
- *    так і явний null, так і відсутнє поле
- *  - невідома назва області (немає в ukraine_map_data.h) ігнорується
- *  - дублікати тієї самої області в масиві не подвоюються
- *  - *out не змінюється при помилці парсингу
- *  - усі 25 реальних областей одночасно (немає переповнення/сміття)
+ *  - тривога у вибраній області / деінде / без тривог / часткова
+ *  - міста "м. Київ" / "м. Севастополь" -> часткова у своїй області
+ *  - повна тривога області має пріоритет над частковою від міста
+ *  - зіпсований JSON, не рядок, неправильна довжина, невідомий символ
+ *  - *out не змінюється при помилці
+ *  - усі області одночасно (немає переповнення/сміття)
+ *  - alerts_location_name(): межі індексу та назви для веб-сторінки
  */
 #include <string.h>
 #include "unity.h"
@@ -22,190 +24,208 @@
 
 #define SELECTED "Київська область"
 
+/* Позиції в рядку статусів (порядок API, див. alerts_parser.c):
+ * 0 - Крим, 9 - м. Київ, 10 - Київська, 15 - Одеська, 18 - м. Севастополь,
+ * 21 - Харківська. */
+
 void setUp(void) {}
 void tearDown(void) {}
 
-static bool result_has_region(const alerts_result_t *r, const char *name) {
-    int idx = -1;
-    for (int i = 0; i < MAP_NUM_REGIONS; i++) {
-        if (strcmp(map_regions[i].name, name) == 0) { idx = i; break; }
+/* Будує JSON-рядок "NNN...N" (27 символів) із заданими статусами на позиціях. */
+static const char *make_json(const char *overrides /* пари "позиція:символ" через кому, або NULL */) {
+    static char json[64];
+    char statuses[ALERTS_API_LOCATIONS + 1];
+    memset(statuses, 'N', ALERTS_API_LOCATIONS);
+    statuses[ALERTS_API_LOCATIONS] = '\0';
+    if (overrides != NULL) {
+        const char *p = overrides;
+        while (*p) {
+            int pos = 0;
+            while (*p >= '0' && *p <= '9') pos = pos * 10 + (*p++ - '0');
+            p++; // ':'
+            statuses[pos] = *p++;
+            if (*p == ',') p++;
+        }
     }
-    TEST_ASSERT_TRUE_MESSAGE(idx >= 0, "тестова назва області відсутня в ukraine_map_data.h");
-    for (int i = 0; i < r->active_region_count; i++) {
-        if (r->active_region_indices[i] == idx) return true;
+    snprintf(json, sizeof(json), "\"%s\"", statuses);
+    return json;
+}
+
+static int region_index(const char *name) {
+    for (int i = 0; i < MAP_NUM_REGIONS; i++) {
+        if (strcmp(map_regions[i].name, name) == 0) return i;
+    }
+    TEST_FAIL_MESSAGE("тестова назва області відсутня в ukraine_map_data.h");
+    return -1;
+}
+
+static bool list_has(const int *list, int count, const char *name) {
+    int idx = region_index(name);
+    for (int i = 0; i < count; i++) {
+        if (list[i] == idx) return true;
     }
     return false;
 }
 
 /* --- 1. тривога саме у вибраній області --- */
 void test_alarm_in_selected_oblast(void) {
-    const char *json =
-        "{\"alerts\":[{\"location_oblast\":\"Київська область\","
-        "\"location_type\":\"oblast\",\"finished_at\":null}]}";
     alerts_result_t out = { 0 };
-    bool ok = alerts_parse(json, SELECTED, &out);
-    TEST_ASSERT_TRUE(ok);
+    TEST_ASSERT_TRUE(alerts_parse(make_json("10:A"), SELECTED, &out));
     TEST_ASSERT_TRUE(out.alarm_active_selected);
     TEST_ASSERT_EQUAL_INT(1, out.active_region_count);
-    TEST_ASSERT_TRUE(result_has_region(&out, "Київська область"));
+    TEST_ASSERT_EQUAL_INT(0, out.partial_region_count);
+    TEST_ASSERT_TRUE(list_has(out.active_region_indices, out.active_region_count, "Київська область"));
 }
 
 /* --- 2. тривога в ІНШІЙ області: не "у мене", але має бути на мапі --- */
 void test_alarm_in_other_oblast_not_selected(void) {
-    const char *json =
-        "{\"alerts\":[{\"location_oblast\":\"Одеська область\","
-        "\"location_type\":\"oblast\",\"finished_at\":null}]}";
     alerts_result_t out = { 0 };
-    bool ok = alerts_parse(json, SELECTED, &out);
-    TEST_ASSERT_TRUE(ok);
+    TEST_ASSERT_TRUE(alerts_parse(make_json("15:A"), SELECTED, &out));
     TEST_ASSERT_FALSE(out.alarm_active_selected);
     TEST_ASSERT_EQUAL_INT(1, out.active_region_count);
-    TEST_ASSERT_TRUE(result_has_region(&out, "Одеська область"));
+    TEST_ASSERT_TRUE(list_has(out.active_region_indices, out.active_region_count, "Одеська область"));
 }
 
-/* --- 3. немає жодної активної тривоги --- */
+/* --- 3. немає жодної тривоги --- */
 void test_no_alarms(void) {
-    const char *json = "{\"alerts\":[]}";
     alerts_result_t out = { 0 };
-    bool ok = alerts_parse(json, SELECTED, &out);
-    TEST_ASSERT_TRUE(ok);
+    TEST_ASSERT_TRUE(alerts_parse(make_json(NULL), SELECTED, &out));
     TEST_ASSERT_FALSE(out.alarm_active_selected);
     TEST_ASSERT_EQUAL_INT(0, out.active_region_count);
+    TEST_ASSERT_EQUAL_INT(0, out.partial_region_count);
 }
 
-/* --- 4. зіпсований JSON --- */
+/* --- 4. часткова тривога: на мапі (окремим списком), але без сирени --- */
+void test_partial_alarm(void) {
+    alerts_result_t out = { 0 };
+    TEST_ASSERT_TRUE(alerts_parse(make_json("10:P,21:P"), SELECTED, &out));
+    TEST_ASSERT_FALSE(out.alarm_active_selected);
+    TEST_ASSERT_EQUAL_INT(0, out.active_region_count);
+    TEST_ASSERT_EQUAL_INT(2, out.partial_region_count);
+    TEST_ASSERT_TRUE(list_has(out.partial_region_indices, out.partial_region_count, "Київська область"));
+    TEST_ASSERT_TRUE(list_has(out.partial_region_indices, out.partial_region_count, "Харківська область"));
+}
+
+/* --- 5. тривога в м. Київ -> часткова в Київській області, без сирени для області --- */
+void test_kyiv_city_maps_to_partial_oblast(void) {
+    alerts_result_t out = { 0 };
+    TEST_ASSERT_TRUE(alerts_parse(make_json("9:A"), SELECTED, &out));
+    TEST_ASSERT_FALSE(out.alarm_active_selected);
+    TEST_ASSERT_EQUAL_INT(0, out.active_region_count);
+    TEST_ASSERT_EQUAL_INT(1, out.partial_region_count);
+    TEST_ASSERT_TRUE(list_has(out.partial_region_indices, out.partial_region_count, "Київська область"));
+}
+
+/* --- 6. вибрано саме "м. Київ" - сирена за статусом міста --- */
+void test_selected_kyiv_city(void) {
+    alerts_result_t out = { 0 };
+    TEST_ASSERT_TRUE(alerts_parse(make_json("9:A"), "м. Київ", &out));
+    TEST_ASSERT_TRUE(out.alarm_active_selected);
+}
+
+/* --- 7. повна тривога області переважає часткову від міста в ній --- */
+void test_full_oblast_overrides_city(void) {
+    alerts_result_t out = { 0 };
+    TEST_ASSERT_TRUE(alerts_parse(make_json("9:A,10:A,18:A,0:A"), SELECTED, &out));
+    TEST_ASSERT_EQUAL_INT(2, out.active_region_count);
+    TEST_ASSERT_EQUAL_INT(0, out.partial_region_count);
+    TEST_ASSERT_TRUE(list_has(out.active_region_indices, out.active_region_count, "Київська область"));
+    TEST_ASSERT_TRUE(list_has(out.active_region_indices, out.active_region_count, "Автономна Республіка Крим"));
+}
+
+/* --- 8. м. Севастополь -> часткова в Криму --- */
+void test_sevastopol_maps_to_crimea(void) {
+    alerts_result_t out = { 0 };
+    TEST_ASSERT_TRUE(alerts_parse(make_json("18:A"), SELECTED, &out));
+    TEST_ASSERT_EQUAL_INT(0, out.active_region_count);
+    TEST_ASSERT_EQUAL_INT(1, out.partial_region_count);
+    TEST_ASSERT_TRUE(list_has(out.partial_region_indices, out.partial_region_count, "Автономна Республіка Крим"));
+}
+
+/* --- 9. зіпсований JSON: false і *out не змінюється --- */
 void test_malformed_json_returns_false(void) {
-    const char *json = "{\"alerts\": [ this is not json ";
     alerts_result_t out;
-    memset(&out, 0xAB, sizeof(out)); // сентинел - переконатись, що НЕ зміниться
-    bool ok = alerts_parse(json, SELECTED, &out);
-    TEST_ASSERT_FALSE(ok);
+    memset(&out, 0xAB, sizeof(out));
+    TEST_ASSERT_FALSE(alerts_parse("\"NNNN", SELECTED, &out));
     unsigned char *raw = (unsigned char *)&out;
     for (size_t i = 0; i < sizeof(out); i++) {
         TEST_ASSERT_EQUAL_HEX8(0xAB, raw[i]);
     }
 }
 
-/* --- 5. валідний JSON, але немає поля "alerts" --- */
-void test_missing_alerts_field_returns_false(void) {
-    const char *json = "{\"meta\":{\"status\":\"ok\"}}";
+/* --- 10. валідний JSON, але не рядок (напр. об'єкт помилки від сервера) --- */
+void test_not_a_string_returns_false(void) {
     alerts_result_t out;
     memset(&out, 0xCD, sizeof(out));
-    bool ok = alerts_parse(json, SELECTED, &out);
-    TEST_ASSERT_FALSE(ok);
+    TEST_ASSERT_FALSE(alerts_parse("{\"message\":\"API token required\"}", SELECTED, &out));
     unsigned char *raw = (unsigned char *)&out;
-    TEST_ASSERT_EQUAL_HEX8(0xCD, raw[0]); // *out не торкнулись
+    TEST_ASSERT_EQUAL_HEX8(0xCD, raw[0]);
 }
 
-/* --- 6. "alerts" є, але не масив --- */
-void test_alerts_not_array_returns_false(void) {
-    const char *json = "{\"alerts\": \"несподівано рядок\"}";
+/* --- 11. неправильна довжина рядка --- */
+void test_wrong_length_returns_false(void) {
     alerts_result_t out = { 0 };
-    bool ok = alerts_parse(json, SELECTED, &out);
-    TEST_ASSERT_FALSE(ok);
+    TEST_ASSERT_FALSE(alerts_parse("\"NNNNNNNNNNNNNNNNNNNNNNNNNN\"", SELECTED, &out));   // 26
+    TEST_ASSERT_FALSE(alerts_parse("\"NNNNNNNNNNNNNNNNNNNNNNNNNNNN\"", SELECTED, &out)); // 28
+    TEST_ASSERT_FALSE(alerts_parse("\"\"", SELECTED, &out));
 }
 
-/* --- 7. тривога рівня "district"/"hromada" НЕ рахується як обласна --- */
-void test_district_level_alert_filtered_out(void) {
-    const char *json =
-        "{\"alerts\":[{\"location_oblast\":\"Одеська область\","
-        "\"location_type\":\"district\",\"finished_at\":null}]}";
+/* --- 12. невідомий символ статусу --- */
+void test_unknown_status_char_returns_false(void) {
     alerts_result_t out = { 0 };
-    bool ok = alerts_parse(json, SELECTED, &out);
-    TEST_ASSERT_TRUE(ok);
-    TEST_ASSERT_EQUAL_INT(0, out.active_region_count);
-    TEST_ASSERT_FALSE(out.alarm_active_selected);
+    TEST_ASSERT_FALSE(alerts_parse(make_json("5:X"), SELECTED, &out));
+    TEST_ASSERT_FALSE(alerts_parse(make_json("5:a"), SELECTED, &out));
 }
 
-/* --- 8. тривога із заповненим finished_at (уже завершена) - ігнорується --- */
-void test_finished_alert_with_timestamp_filtered_out(void) {
-    const char *json =
-        "{\"alerts\":[{\"location_oblast\":\"Київська область\","
-        "\"location_type\":\"oblast\",\"finished_at\":\"2026-09-23T10:00:00Z\"}]}";
+/* --- 13. пробіли/перенос рядка навколо JSON не заважають --- */
+void test_whitespace_around_json(void) {
+    char json[64];
+    snprintf(json, sizeof(json), "  %s\n", make_json("15:A"));
     alerts_result_t out = { 0 };
-    bool ok = alerts_parse(json, SELECTED, &out);
-    TEST_ASSERT_TRUE(ok);
-    TEST_ASSERT_FALSE(out.alarm_active_selected);
-    TEST_ASSERT_EQUAL_INT(0, out.active_region_count);
-}
-
-/* --- 9. поле finished_at взагалі ВІДСУТНЄ в об'єкті - все ще активна --- */
-void test_missing_finished_at_field_is_active(void) {
-    const char *json =
-        "{\"alerts\":[{\"location_oblast\":\"Київська область\","
-        "\"location_type\":\"oblast\"}]}";
-    alerts_result_t out = { 0 };
-    bool ok = alerts_parse(json, SELECTED, &out);
-    TEST_ASSERT_TRUE(ok);
-    TEST_ASSERT_TRUE(out.alarm_active_selected);
+    TEST_ASSERT_TRUE(alerts_parse(json, SELECTED, &out));
     TEST_ASSERT_EQUAL_INT(1, out.active_region_count);
 }
 
-/* --- 10. невідома назва області - пропускається, без падіння --- */
-void test_unknown_oblast_name_ignored(void) {
-    const char *json =
-        "{\"alerts\":[{\"location_oblast\":\"Марсіанська область\","
-        "\"location_type\":\"oblast\",\"finished_at\":null}]}";
-    alerts_result_t out = { 0 };
-    bool ok = alerts_parse(json, SELECTED, &out);
-    TEST_ASSERT_TRUE(ok);
-    TEST_ASSERT_EQUAL_INT(0, out.active_region_count);
-    TEST_ASSERT_FALSE(out.alarm_active_selected);
-}
-
-/* --- 11. запис без "location_oblast" (несподіваний/неповний) - пропускається --- */
-void test_missing_location_oblast_field_ignored(void) {
-    const char *json =
-        "{\"alerts\":[{\"location_type\":\"oblast\",\"finished_at\":null}]}";
-    alerts_result_t out = { 0 };
-    bool ok = alerts_parse(json, SELECTED, &out);
-    TEST_ASSERT_TRUE(ok);
-    TEST_ASSERT_EQUAL_INT(0, out.active_region_count);
-}
-
-/* --- 12. дублікат тієї самої області в масиві - рахується один раз --- */
-void test_duplicate_region_deduped(void) {
-    const char *json =
-        "{\"alerts\":["
-        "{\"location_oblast\":\"Одеська область\",\"location_type\":\"oblast\",\"finished_at\":null},"
-        "{\"location_oblast\":\"Одеська область\",\"location_type\":\"oblast\",\"finished_at\":null}"
-        "]}";
-    alerts_result_t out = { 0 };
-    bool ok = alerts_parse(json, SELECTED, &out);
-    TEST_ASSERT_TRUE(ok);
-    TEST_ASSERT_EQUAL_INT(1, out.active_region_count);
-}
-
-/* --- 13. усі 25 реальних областей одночасно - немає переповнення/сміття --- */
-void test_all_real_regions_at_once(void) {
-    char json[4096];
-    strcpy(json, "{\"alerts\":[");
-    for (int i = 0; i < MAP_NUM_REGIONS; i++) {
-        char item[160];
-        snprintf(item, sizeof(item),
-                 "%s{\"location_oblast\":\"%s\",\"location_type\":\"oblast\",\"finished_at\":null}",
-                 (i > 0) ? "," : "", map_regions[i].name);
-        strcat(json, item);
-    }
-    strcat(json, "]}");
+/* --- 14. усі локації в тривозі - кожна з 25 областей рівно один раз --- */
+void test_all_locations_at_once(void) {
+    char json[64];
+    char statuses[ALERTS_API_LOCATIONS + 1];
+    memset(statuses, 'A', ALERTS_API_LOCATIONS);
+    statuses[ALERTS_API_LOCATIONS] = '\0';
+    snprintf(json, sizeof(json), "\"%s\"", statuses);
 
     alerts_result_t out = { 0 };
-    bool ok = alerts_parse(json, SELECTED, &out);
-    TEST_ASSERT_TRUE(ok);
+    TEST_ASSERT_TRUE(alerts_parse(json, SELECTED, &out));
     TEST_ASSERT_TRUE(out.alarm_active_selected);
     TEST_ASSERT_EQUAL_INT(MAP_NUM_REGIONS, out.active_region_count);
-    // NOTE: MAP_NUM_REGIONS (25) < ALERTS_MAX_ACTIVE_REGIONS (27), тож захист
-    // від переповнення (active_region_count < ALERTS_MAX_ACTIVE_REGIONS)
-    // наразі є "мертвим кодом" - його не можна реалістично досягти, доки в
-    // ukraine_map_data.h лишається 25 областей. Лишаємо задокументованим тут,
-    // а не імітуємо штучний масив на >27 різних назв, яких карта не знає.
+    TEST_ASSERT_EQUAL_INT(0, out.partial_region_count);
+    for (int i = 0; i < out.active_region_count; i++) {
+        TEST_ASSERT_TRUE(out.active_region_indices[i] >= 0 && out.active_region_indices[i] < MAP_NUM_REGIONS);
+        for (int j = i + 1; j < out.active_region_count; j++) {
+            TEST_ASSERT_NOT_EQUAL(out.active_region_indices[i], out.active_region_indices[j]);
+        }
+    }
 }
 
-/* --- 14. NULL-аргументи не падають --- */
+/* --- 15. NULL-аргументи не падають --- */
 void test_null_args_return_false(void) {
     alerts_result_t out = { 0 };
     TEST_ASSERT_FALSE(alerts_parse(NULL, SELECTED, &out));
-    TEST_ASSERT_FALSE(alerts_parse("{}", SELECTED, NULL));
+    TEST_ASSERT_FALSE(alerts_parse(make_json(NULL), SELECTED, NULL));
+}
+
+/* --- 16. список локацій для веб-сторінки: межі та збіг з мапою --- */
+void test_location_names(void) {
+    TEST_ASSERT_NULL(alerts_location_name(-1));
+    TEST_ASSERT_NULL(alerts_location_name(ALERTS_API_LOCATIONS));
+    TEST_ASSERT_EQUAL_STRING("Автономна Республіка Крим", alerts_location_name(0));
+    TEST_ASSERT_EQUAL_STRING("м. Київ", alerts_location_name(9));
+    TEST_ASSERT_EQUAL_STRING("Київська область", alerts_location_name(10));
+    TEST_ASSERT_EQUAL_STRING("Чернігівська область", alerts_location_name(26));
+    // вибрана через веб назва з цього списку має спрацьовувати як selected
+    alerts_result_t out = { 0 };
+    TEST_ASSERT_TRUE(alerts_parse(make_json("15:A"), alerts_location_name(15), &out));
+    TEST_ASSERT_TRUE(out.alarm_active_selected);
 }
 
 int main(void) {
@@ -213,16 +233,18 @@ int main(void) {
     RUN_TEST(test_alarm_in_selected_oblast);
     RUN_TEST(test_alarm_in_other_oblast_not_selected);
     RUN_TEST(test_no_alarms);
+    RUN_TEST(test_partial_alarm);
+    RUN_TEST(test_kyiv_city_maps_to_partial_oblast);
+    RUN_TEST(test_selected_kyiv_city);
+    RUN_TEST(test_full_oblast_overrides_city);
+    RUN_TEST(test_sevastopol_maps_to_crimea);
     RUN_TEST(test_malformed_json_returns_false);
-    RUN_TEST(test_missing_alerts_field_returns_false);
-    RUN_TEST(test_alerts_not_array_returns_false);
-    RUN_TEST(test_district_level_alert_filtered_out);
-    RUN_TEST(test_finished_alert_with_timestamp_filtered_out);
-    RUN_TEST(test_missing_finished_at_field_is_active);
-    RUN_TEST(test_unknown_oblast_name_ignored);
-    RUN_TEST(test_missing_location_oblast_field_ignored);
-    RUN_TEST(test_duplicate_region_deduped);
-    RUN_TEST(test_all_real_regions_at_once);
+    RUN_TEST(test_not_a_string_returns_false);
+    RUN_TEST(test_wrong_length_returns_false);
+    RUN_TEST(test_unknown_status_char_returns_false);
+    RUN_TEST(test_whitespace_around_json);
+    RUN_TEST(test_all_locations_at_once);
     RUN_TEST(test_null_args_return_false);
+    RUN_TEST(test_location_names);
     return UNITY_END();
 }

@@ -1,29 +1,21 @@
 menu "Alertinua Configuration"
 
     menu "Alerts API"
-        config ALERTINUA_API_URL
-            string "URL API тривог"
-            default "https://api.alerts.in.ua/v1/alerts/active.json"
-            help
-                Кінцева точка REST API, яку опитує пристрій. За замовчуванням -
-                публічний API alerts.in.ua (див. https://alerts.in.ua/).
-
-        config ALERTINUA_API_TOKEN
-            string "API токен (Bearer)"
-            default ""
-            help
-                Токен доступу до API. Реєструється на сайті сервісу тривог.
-                Порожній токен - запити повертатимуть 401/403, пристрій
-                покаже банер помилки, але не зависне.
+        # URL і токен API задаються у файлі .env (див. .env.example), а не тут:
+        # sdkconfig комітиться в git, і токен у ньому потрапив би в репозиторій.
 
         config ALERTINUA_OBLAST_NAME
             string "Назва області для стеження"
             default "Київська область"
             help
-                Точна назва області українською, як вона зустрічається у полі
-                "location_oblast" відповіді API (і як записана у
-                components/map/ukraine_map_data.h). Саме за цією областю
-                визначається, чи вмикати сирену/індикацію тривоги.
+                Точна назва області українською, як у списку локацій API
+                (components/scraping/alerts_parser.c), напр. "Київська область"
+                або "м. Київ". Сирена вмикається, коли тривога оголошена на всю
+                цю область (статус 'A').
+
+                Це лише значення за замовчуванням: область можна змінити на
+                сторінці налаштувань пристрою (http://192.168.4.1/ у режимі
+                налаштування), вибір зберігається в NVS.
 
         config ALERTINUA_POLL_INTERVAL_SEC
             int "Інтервал опитування API (секунди)"

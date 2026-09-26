@@ -737,10 +737,6 @@ CONFIG_PARTITION_TABLE_MD5=y
 # Alerts API
 #
 # default:
-CONFIG_ALERTINUA_API_URL="https://api.alerts.in.ua/v1/alerts/active.json"
-# default:
-CONFIG_ALERTINUA_API_TOKEN=""
-# default:
 CONFIG_ALERTINUA_OBLAST_NAME="Київська область"
 # default:
 CONFIG_ALERTINUA_POLL_INTERVAL_SEC=60

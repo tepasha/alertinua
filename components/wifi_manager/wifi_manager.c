@@ -1,3 +1,4 @@
+#include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
 #include <ctype.h>
@@ -12,28 +13,19 @@
 #include "esp_log.h"
 #include "esp_http_server.h"
 #include "esp_system.h"
-#include "esp_task_wdt.h"
 
 #include "wifi_manager.h"
 #include "wifi_creds.h"
-#include "app_state.h"
+#include "settings.h"
+#include "alerts_parser.h" // список локацій API для вибору області
 
 static const char *TAG = "wifi_manager";
 
-#ifndef CONFIG_ALERTINUA_DEFAULT_WIFI_SSID
-#define CONFIG_ALERTINUA_DEFAULT_WIFI_SSID "alertinua"
-#endif
-#ifndef CONFIG_ALERTINUA_DEFAULT_WIFI_PASSWORD
-#define CONFIG_ALERTINUA_DEFAULT_WIFI_PASSWORD "alertinua"
-#endif
 #ifndef CONFIG_ALERTINUA_PROVISIONING_AP_SSID
 #define CONFIG_ALERTINUA_PROVISIONING_AP_SSID "ESP32-Setup"
 #endif
 #ifndef CONFIG_ALERTINUA_PROVISIONING_AP_PASSWORD
 #define CONFIG_ALERTINUA_PROVISIONING_AP_PASSWORD ""
-#endif
-#ifndef CONFIG_ALERTINUA_AUTO_PROVISION_AFTER_FAILURES
-#define CONFIG_ALERTINUA_AUTO_PROVISION_AFTER_FAILURES 10
 #endif
 
 #define WIFI_MAX_RETRY 5 /* швидких спроб esp_wifi_connect() підряд, керується event-хендлером нижче */
@@ -41,7 +33,7 @@ static const char *TAG = "wifi_manager";
 #define WIFI_CONNECTED_BIT BIT0
 #define WIFI_FAIL_BIT      BIT1
 
-static EventGroupHandle_t s_wifi_event_group;
+static EventGroupHandle_t s_wifi_event_group = NULL;
 static int s_retry_num = 0;
 static bool s_wifi_stack_started = false;
 
@@ -49,29 +41,41 @@ static bool s_wifi_stack_started = false;
 /* Сторінка налаштування Wi-Fi (SoftAP provisioning)                        */
 /* ------------------------------------------------------------------------ */
 
-static const char *SETTINGS_PAGE =
+/* Сторінка збирається з трьох шматків, бо список областей (<option>)
+ * генерується на льоту - з позначкою поточної вибраної області. */
+static const char *SETTINGS_PAGE_HEAD =
 "<!DOCTYPE html>"
 "<html lang=\"uk\">"
 "<head>"
 "<meta charset=\"UTF-8\">"
 "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"
-"<title>alertinua // WIFI SETUP</title>"
+"<title>alertinua // SETUP</title>"
 "<style>"
 "  body{font-family:sans-serif;background:#111;color:#4ade5a;display:flex;"
 "       align-items:center;justify-content:center;min-height:100vh;margin:0;padding:24px;}"
 "  .box{max-width:360px;width:100%;border:1px solid #1f6b2a;border-radius:10px;padding:20px;}"
-"  h2{margin-top:0;} label{display:block;margin:12px 0 4px;font-size:13px;}"
-"  input{width:100%;padding:8px;background:#000;border:1px solid #1f6b2a;color:#6cff7a;box-sizing:border-box;}"
+"  h2{margin-top:0;} h3{margin:20px 0 4px;font-size:15px;}"
+"  label{display:block;margin:12px 0 4px;font-size:13px;}"
+"  .hint{font-size:12px;color:#2f9a3c;margin:4px 0 0;}"
+"  input,select{width:100%;padding:8px;background:#000;border:1px solid #1f6b2a;color:#6cff7a;box-sizing:border-box;}"
 "  button{width:100%;margin-top:16px;padding:10px;background:#1f6b2a;color:#fff;border:none;border-radius:4px;}"
 "</style>"
 "</head>"
 "<body><div class=\"box\">"
-"<h2>Налаштування Wi-Fi</h2>"
+"<h2>Налаштування</h2>"
 "<form method=\"POST\" action=\"/save\">"
+"  <h3>Область</h3>"
+"  <label for=\"oblast\">Область для сирени та індикації</label>"
+"  <select id=\"oblast\" name=\"oblast\">";
+
+static const char *SETTINGS_PAGE_TAIL =
+"  </select>"
+"  <h3>Wi-Fi</h3>"
 "  <label for=\"ssid\">Назва мережі (SSID)</label>"
-"  <input id=\"ssid\" name=\"ssid\" maxlength=\"31\" required>"
+"  <input id=\"ssid\" name=\"ssid\" maxlength=\"31\">"
 "  <label for=\"password\">Пароль</label>"
 "  <input id=\"password\" name=\"password\" type=\"password\" maxlength=\"63\">"
+"  <p class=\"hint\">Залиште SSID порожнім, щоб не змінювати Wi-Fi.</p>"
 "  <button type=\"submit\">Зберегти і перезавантажити</button>"
 "</form>"
 "</div></body></html>";
@@ -151,12 +155,20 @@ static esp_err_t wifi_stack_start_once(const char *ssid, const char *password) {
     return ESP_OK;
 }
 
-/* Одна спроба (пере)підключення. Перший виклик запускає стек Wi-Fi і чекає
- * на STA_START->connect, який стек виконує сам. Кожен наступний виклик лише
- * очищає прапорці і форсує новий esp_wifi_connect(). Обмежений тайм-аут
- * очікування (замість portMAX_DELAY) - щоб задача-власник могла піти на
- * backoff і не тримати watchdog "заблокованим" необмежено довго. */
-static bool wifi_try_connect(const char *ssid, const char *password, uint32_t wait_ms) {
+/* Починає одну спробу (пере)підключення і одразу повертається. Перший виклик
+ * запускає стек Wi-Fi (STA_START->connect стек виконує сам). Кожен наступний
+ * лише очищає прапорці і форсує новий esp_wifi_connect(). Результат чекати
+ * через wifi_manager_wait_connect() короткими кроками - щоб задача-власник
+ * встигала скидати watchdog. */
+bool wifi_manager_begin_connect(const char *ssid, const char *password) {
+    if (s_wifi_event_group == NULL) {
+        s_wifi_event_group = xEventGroupCreate();
+        if (s_wifi_event_group == NULL) {
+            ESP_LOGE(TAG, "не вдалось створити event group Wi-Fi");
+            return false;
+        }
+    }
+
     if (!s_wifi_stack_started) {
         esp_err_t err = wifi_stack_start_once(ssid, password);
         if (err != ESP_OK) {
@@ -167,87 +179,29 @@ static bool wifi_try_connect(const char *ssid, const char *password, uint32_t wa
         xEventGroupClearBits(s_wifi_event_group, WIFI_CONNECTED_BIT | WIFI_FAIL_BIT);
         esp_wifi_connect();
     }
+    return true;
+}
 
+wifi_connect_result_t wifi_manager_wait_connect(uint32_t wait_ms) {
+    if (s_wifi_event_group == NULL) {
+        return WIFI_CONNECT_FAILED;
+    }
     EventBits_t bits = xEventGroupWaitBits(s_wifi_event_group, WIFI_CONNECTED_BIT | WIFI_FAIL_BIT,
                                             pdFALSE, pdFALSE, pdMS_TO_TICKS(wait_ms));
-    return (bits & WIFI_CONNECTED_BIT) != 0;
+    if (bits & WIFI_CONNECTED_BIT) {
+        return WIFI_CONNECT_OK;
+    }
+    if (bits & WIFI_FAIL_BIT) {
+        return WIFI_CONNECT_FAILED;
+    }
+    return WIFI_CONNECT_PENDING;
 }
 
 /* true, якщо з'єднання ще (ймовірно) тримається; false - якщо стек офіційно
  * повідомив про остаточну втрату зв'язку (вичерпано WIFI_MAX_RETRY спроб). */
-static bool wifi_still_connected(uint32_t poll_ms) {
+bool wifi_manager_still_connected(uint32_t poll_ms) {
     EventBits_t bits = xEventGroupWaitBits(s_wifi_event_group, WIFI_FAIL_BIT, pdFALSE, pdFALSE, pdMS_TO_TICKS(poll_ms));
     return (bits & WIFI_FAIL_BIT) == 0;
-}
-
-/* ------------------------------------------------------------------------ */
-/* Задача підключення з backoff + автоматичний перехід у provisioning       */
-/* ------------------------------------------------------------------------ */
-
-static void wifi_task(void *arg) {
-    (void)arg;
-    esp_task_wdt_add(NULL);
-
-    char ssid[WIFI_CREDS_SSID_MAX_LEN] = CONFIG_ALERTINUA_DEFAULT_WIFI_SSID;
-    char password[WIFI_CREDS_PASS_MAX_LEN] = CONFIG_ALERTINUA_DEFAULT_WIFI_PASSWORD;
-    if (wifi_creds_load(ssid, password) == ESP_OK) {
-        ESP_LOGI(TAG, "using WiFi credentials saved in NVS (SSID \"%s\")", ssid);
-    } else {
-        ESP_LOGW(TAG, "no saved WiFi credentials, using compiled-in default (SSID \"%s\")", ssid);
-    }
-
-    s_wifi_event_group = xEventGroupCreate();
-
-    uint32_t backoff_ms = 2000;
-    const uint32_t backoff_max_ms = 60000;
-    uint32_t consecutive_failures = 0;
-
-    while (1) {
-        esp_task_wdt_reset();
-        app_state_set(APP_STATE_WIFI_CONNECTING);
-        app_state_set_wifi_status(WIFI_STATUS_CONNECTING);
-        ESP_LOGI(TAG, "connecting to WiFi \"%s\"...", ssid);
-
-        bool connected = wifi_try_connect(ssid, password, 30000);
-
-        if (connected) {
-            ESP_LOGI(TAG, "Wi-Fi connected");
-            app_state_set_wifi_status(WIFI_STATUS_CONNECTED);
-            backoff_ms = 2000;
-            consecutive_failures = 0;
-
-            bool still_up = true;
-            while (still_up) {
-                esp_task_wdt_reset();
-                still_up = wifi_still_connected(1000); // прокидається щосекунди - і для WDT, і для реакції на дисконект
-            }
-            ESP_LOGW(TAG, "Wi-Fi connection lost, reconnecting...");
-            app_state_set_wifi_status(WIFI_STATUS_DISCONNECTED);
-        } else {
-            consecutive_failures++;
-            app_state_set_wifi_status(WIFI_STATUS_DISCONNECTED);
-            ESP_LOGE(TAG, "Failed to connect to WiFi (%u спроб поспіль)", (unsigned)consecutive_failures);
-
-            if (consecutive_failures >= CONFIG_ALERTINUA_AUTO_PROVISION_AFTER_FAILURES) {
-                ESP_LOGW(TAG, "too many failed attempts - entering WiFi setup mode (SoftAP) automatically");
-                app_state_set(APP_STATE_PROVISIONING);
-                app_state_set_wifi_status(WIFI_STATUS_PROVISIONING);
-                wifi_manager_start_provisioning(); // після збереження нових даних сам зробить esp_restart()
-                vTaskDelete(NULL);
-                return;
-            }
-
-            for (uint32_t waited_ms = 0; waited_ms < backoff_ms; waited_ms += 1000) {
-                esp_task_wdt_reset();
-                vTaskDelay(pdMS_TO_TICKS(1000));
-            }
-            backoff_ms = (backoff_ms * 2 > backoff_max_ms) ? backoff_max_ms : backoff_ms * 2;
-        }
-    }
-}
-
-void wifi_manager_task_start(void) {
-    xTaskCreate(wifi_task, "wifi_task", 4096, NULL, 4, NULL);
 }
 
 /* ------------------------------------------------------------------------ */
@@ -255,8 +209,24 @@ void wifi_manager_task_start(void) {
 /* ------------------------------------------------------------------------ */
 
 static esp_err_t root_get_handler(httpd_req_t *req) {
+    char current[SETTINGS_OBLAST_MAX_LEN];
+    settings_get_oblast(current, sizeof(current));
+
     httpd_resp_set_type(req, "text/html");
-    httpd_resp_send(req, SETTINGS_PAGE, HTTPD_RESP_USE_STRLEN);
+    httpd_resp_sendstr_chunk(req, SETTINGS_PAGE_HEAD);
+
+    // value - індекс у списку локацій API: так у формі не треба передавати
+    // й розкодовувати кириличні назви, а перевірка вводу - просто межі індексу.
+    char option[160];
+    for (int i = 0; i < ALERTS_API_LOCATIONS; i++) {
+        const char *name = alerts_location_name(i);
+        snprintf(option, sizeof(option), "<option value=\"%d\"%s>%s</option>",
+                 i, (strcmp(name, current) == 0) ? " selected" : "", name);
+        httpd_resp_sendstr_chunk(req, option);
+    }
+
+    httpd_resp_sendstr_chunk(req, SETTINGS_PAGE_TAIL);
+    httpd_resp_sendstr_chunk(req, NULL); // кінець відповіді
     return ESP_OK;
 }
 
@@ -307,13 +277,17 @@ static bool form_get_field(const char *body, const char *key, char *out, size_t 
     return false;
 }
 
+#define SAVE_BODY_MAX_LEN 1024 // SSID/пароль зі спецсимволами в URL-кодуванні займають до 3 байт на символ
+
 static esp_err_t save_post_handler(httpd_req_t *req) {
-    if (req->content_len <= 0 || req->content_len >= 512) {
+    if (req->content_len <= 0 || req->content_len >= SAVE_BODY_MAX_LEN) {
         httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid form data");
         return ESP_FAIL;
     }
 
-    char body[512];
+    // static, а не на стеку: стек задачі HTTP-сервера лише ~4КБ, а запити
+    // сервер обробляє по одному, тож спільний буфер безпечний.
+    static char body[SAVE_BODY_MAX_LEN];
     int received = 0;
     while (received < req->content_len) {
         int ret = httpd_req_recv(req, body + received, req->content_len - received);
@@ -328,26 +302,53 @@ static esp_err_t save_post_handler(httpd_req_t *req) {
     }
     body[received] = '\0';
 
+    // --- Область: індекс у списку локацій API (див. root_get_handler) ---
+    char oblast_idx_str[8] = { 0 };
+    const char *oblast = NULL;
+    if (form_get_field(body, "oblast", oblast_idx_str, sizeof(oblast_idx_str))) {
+        char *end = NULL;
+        long idx = strtol(oblast_idx_str, &end, 10);
+        if (end != oblast_idx_str && *end == '\0') {
+            oblast = alerts_location_name((int)idx); // NULL, якщо індекс поза межами
+        }
+    }
+    if (oblast == NULL) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid oblast");
+        return ESP_FAIL;
+    }
+
+    // --- Wi-Fi: необов'язково; порожній SSID - залишити збережені дані ---
     char ssid[WIFI_CREDS_SSID_MAX_LEN] = { 0 };
     char password[WIFI_CREDS_PASS_MAX_LEN] = { 0 };
-
-    if (!form_get_field(body, "ssid", ssid, sizeof(ssid)) || strlen(ssid) == 0) {
-        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "SSID is required");
-        return ESP_FAIL;
-    }
+    form_get_field(body, "ssid", ssid, sizeof(ssid));
     form_get_field(body, "password", password, sizeof(password)); // опціонально -- відкриті мережі без пароля
 
-    esp_err_t err = wifi_creds_save(ssid, password);
+    esp_err_t err = settings_set_oblast(oblast);
     if (err != ESP_OK) {
-        ESP_LOGE(TAG, "failed to save WiFi credentials: %s", esp_err_to_name(err));
-        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Failed to save credentials");
+        ESP_LOGE(TAG, "failed to save oblast: %s", esp_err_to_name(err));
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Failed to save oblast");
         return ESP_FAIL;
     }
+    ESP_LOGI(TAG, "saved oblast \"%s\"", oblast);
 
-    ESP_LOGI(TAG, "saved new WiFi credentials for SSID \"%s\", rebooting...", ssid);
+    if (strlen(ssid) > 0) {
+        err = wifi_creds_save(ssid, password);
+        if (err != ESP_OK) {
+            ESP_LOGE(TAG, "failed to save WiFi credentials: %s", esp_err_to_name(err));
+            httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Failed to save credentials");
+            return ESP_FAIL;
+        }
+        ESP_LOGI(TAG, "saved new WiFi credentials for SSID \"%s\"", ssid);
+    } else {
+        ESP_LOGI(TAG, "SSID empty - keeping saved WiFi credentials");
+    }
+
+    ESP_LOGI(TAG, "settings saved, rebooting...");
 
     httpd_resp_set_type(req, "text/html");
-    httpd_resp_send(req, "<html><body><h2>Saved. Rebooting...</h2></body></html>", HTTPD_RESP_USE_STRLEN);
+    httpd_resp_send(req, "<html><head><meta charset=\"UTF-8\"></head>"
+                         "<body><h2>Збережено. Перезавантаження...</h2></body></html>",
+                    HTTPD_RESP_USE_STRLEN);
 
     vTaskDelay(pdMS_TO_TICKS(1000)); // дати відповіді дійти до браузера перед перезавантаженням
     esp_restart();

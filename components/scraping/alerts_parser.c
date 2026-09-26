@@ -8,16 +8,73 @@
 
 static const char *TAG = "ALERTS_PARSER";
 
-static int find_region_index(const char *name) {
-    if (name == NULL) {
-        return -1;
+/* Порядок локацій у рядку статусів IoT-ендпоінта - такий самий, як в
+ * офіційному клієнті alerts.in.ua (alerts_in_ua/air_raid_alert_oblast_statuses.py). */
+static const char *const API_LOCATIONS[ALERTS_API_LOCATIONS] = {
+    "Автономна Республіка Крим",
+    "Волинська область",
+    "Вінницька область",
+    "Дніпропетровська область",
+    "Донецька область",
+    "Житомирська область",
+    "Закарпатська область",
+    "Запорізька область",
+    "Івано-Франківська область",
+    "м. Київ",
+    "Київська область",
+    "Кіровоградська область",
+    "Луганська область",
+    "Львівська область",
+    "Миколаївська область",
+    "Одеська область",
+    "Полтавська область",
+    "Рівненська область",
+    "м. Севастополь",
+    "Сумська область",
+    "Тернопільська область",
+    "Харківська область",
+    "Херсонська область",
+    "Хмельницька область",
+    "Черкаська область",
+    "Чернівецька область",
+    "Чернігівська область",
+};
+
+const char *alerts_location_name(int index) {
+    if (index < 0 || index >= ALERTS_API_LOCATIONS) {
+        return NULL;
     }
+    return API_LOCATIONS[index];
+}
+
+typedef enum {
+    REGION_NO_ALERT = 0,
+    REGION_PARTIAL  = 1,
+    REGION_FULL     = 2,
+} region_alert_t;
+
+static int find_region_index(const char *name) {
     for (int i = 0; i < MAP_NUM_REGIONS; i++) {
         if (strcmp(map_regions[i].name, name) == 0) {
             return i;
         }
     }
     return -1;
+}
+
+/* Полігон мапи, на якому показуємо локацію API. Міста без власного полігона
+ * прив'язані до області навколо них. */
+static int map_index_for_location(const char *location, bool *is_city) {
+    *is_city = false;
+    if (strcmp(location, "м. Київ") == 0) {
+        *is_city = true;
+        return find_region_index("Київська область");
+    }
+    if (strcmp(location, "м. Севастополь") == 0) {
+        *is_city = true;
+        return find_region_index("Автономна Республіка Крим");
+    }
+    return find_region_index(location);
 }
 
 bool alerts_parse(const char *json_str, const char *selected_oblast_name, alerts_result_t *out) {
@@ -30,59 +87,65 @@ bool alerts_parse(const char *json_str, const char *selected_oblast_name, alerts
         ESP_LOGE(TAG, "не вдалось розпарсити JSON (не валідний або обірваний)");
         return false;
     }
-
-    cJSON *alerts = cJSON_GetObjectItemCaseSensitive(root, "alerts");
-    if (!cJSON_IsArray(alerts)) {
-        ESP_LOGE(TAG, "у відповіді відсутнє поле \"alerts\" або воно не масив");
+    if (!cJSON_IsString(root) || root->valuestring == NULL) {
+        ESP_LOGE(TAG, "очікувався JSON-рядок статусів областей");
         cJSON_Delete(root);
         return false;
     }
 
-    alerts_result_t result = { 0 };
+    const char *statuses = root->valuestring;
+    if (strlen(statuses) != ALERTS_API_LOCATIONS) {
+        ESP_LOGE(TAG, "рядок статусів має довжину %u, очікувалось %d",
+                 (unsigned)strlen(statuses), ALERTS_API_LOCATIONS);
+        cJSON_Delete(root);
+        return false;
+    }
 
-    cJSON *alert = NULL;
-    cJSON_ArrayForEach(alert, alerts) {
-        cJSON *location_oblast = cJSON_GetObjectItemCaseSensitive(alert, "location_oblast");
-        cJSON *location_type   = cJSON_GetObjectItemCaseSensitive(alert, "location_type");
-        cJSON *finished_at     = cJSON_GetObjectItemCaseSensitive(alert, "finished_at");
+    region_alert_t per_region[MAP_NUM_REGIONS] = { REGION_NO_ALERT };
+    bool alarm_selected = false;
 
-        if (!cJSON_IsString(location_oblast)) {
-            continue; // неповний/несподіваний запис - пропускаємо, а не падаємо
+    for (int i = 0; i < ALERTS_API_LOCATIONS; i++) {
+        region_alert_t level;
+        switch (statuses[i]) {
+            case 'A': level = REGION_FULL; break;
+            case 'P': level = REGION_PARTIAL; break;
+            case 'N': level = REGION_NO_ALERT; break;
+            default:
+                ESP_LOGE(TAG, "невідомий статус '%c' на позиції %d", statuses[i], i);
+                cJSON_Delete(root);
+                return false;
         }
 
-        // Нас цікавлять лише тривоги рівня "область" (не район/громада) і
-        // лише ті, що ще не завершились (finished_at відсутнє або null).
-        bool is_oblast_level = cJSON_IsString(location_type) &&
-                                strcmp(location_type->valuestring, "oblast") == 0;
-        bool is_active = (finished_at == NULL) || cJSON_IsNull(finished_at);
-
-        if (!is_oblast_level || !is_active) {
-            continue;
+        if (selected_oblast_name != NULL && level == REGION_FULL &&
+            strcmp(API_LOCATIONS[i], selected_oblast_name) == 0) {
+            alarm_selected = true;
         }
 
-        int idx = find_region_index(location_oblast->valuestring);
+        bool is_city = false;
+        int idx = map_index_for_location(API_LOCATIONS[i], &is_city);
         if (idx < 0) {
-            continue; // назва не знайдена в наших даних мапи - пропускаємо, це не помилка
+            continue; // немає полігона на мапі - пропускаємо, це не помилка
         }
-
-        if (selected_oblast_name != NULL && strcmp(location_oblast->valuestring, selected_oblast_name) == 0) {
-            result.alarm_active_selected = true;
+        if (is_city && level == REGION_FULL) {
+            level = REGION_PARTIAL; // тривога в місті - це лише частина області навколо
         }
-
-        bool already_present = false;
-        for (int i = 0; i < result.active_region_count; i++) {
-            if (result.active_region_indices[i] == idx) {
-                already_present = true;
-                break;
-            }
+        if (level > per_region[idx]) {
+            per_region[idx] = level;
         }
-        if (!already_present && result.active_region_count < ALERTS_MAX_ACTIVE_REGIONS) {
-            result.active_region_indices[result.active_region_count++] = idx;
-        }
-        // якщо масив уже заповнений - решту просто ігноруємо (захист від переповнення)
     }
 
     cJSON_Delete(root);
+
+    alerts_result_t result = { 0 };
+    result.alarm_active_selected = alarm_selected;
+    for (int i = 0; i < MAP_NUM_REGIONS; i++) {
+        if (per_region[i] == REGION_FULL && result.active_region_count < ALERTS_MAX_ACTIVE_REGIONS) {
+            result.active_region_indices[result.active_region_count++] = i;
+        } else if (per_region[i] == REGION_PARTIAL && result.partial_region_count < ALERTS_MAX_ACTIVE_REGIONS) {
+            result.partial_region_indices[result.partial_region_count++] = i;
+        }
+    }
+
     *out = result;
     return true;
 }

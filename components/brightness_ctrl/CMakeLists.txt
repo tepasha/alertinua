@@ -1,5 +1,4 @@
 idf_component_register(
-    SRCS "brightness_ctrl.c"
+    SRCS "brightness_ctrl_step.c"
     INCLUDE_DIRS "."
-    REQUIRES freertos log esp_system light_sensor backlight app_state
 )

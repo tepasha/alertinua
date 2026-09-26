@@ -230,6 +230,25 @@ void render_mark_regions_red(uint16_t *fb, const int *region_indices, int count)
     }
 }
 
+/* Часткова тривога (лише в частині районів/громад області) - янтарна
+ * заливка, щоб візуально відрізнялась від тривоги по всій області. */
+void render_mark_region_partial(uint16_t *fb, int region_index) {
+    if (region_index < 0 || region_index >= MAP_NUM_REGIONS) {
+        return;
+    }
+    const map_region_t *r = &map_regions[region_index];
+    uint16_t amber_fill = swap16(rgb565(180, 110, 0));
+    uint16_t amber_edge = swap16(rgb565(255, 190, 40));
+    fb_fill_polygon(fb, &map_points[r->point_offset], r->point_count, amber_fill);
+    fb_draw_polygon_outline(fb, &map_points[r->point_offset], r->point_count, amber_edge);
+}
+
+void render_mark_regions_partial(uint16_t *fb, const int *region_indices, int count) {
+    for (int i = 0; i < count; i++) {
+        render_mark_region_partial(fb, region_indices[i]);
+    }
+}
+
 /* Власні блочні гліфи 8x8 лише для 'E' і 'R' (усе, що потрібно для "ERR") -
  * той самий формат, що й у поширених 8x8-шрифтах: bit0 = лівий стовпчик. */
 static const uint8_t glyph_E[8] = {0xFF, 0x01, 0x01, 0x3F, 0x01, 0x01, 0x01, 0xFF};

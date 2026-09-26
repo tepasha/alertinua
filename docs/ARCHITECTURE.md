@@ -13,15 +13,19 @@
 
 ## 2. Задачі (FreeRTOS tasks)
 
-| Задача | Компонент | Пріоритет | Блокується на | Головна робота |
+Усі задачі лежать у папці `task/` у корені проєкту — кожна у власній
+підпапці, яка є окремим компонентом ESP-IDF (`task/fetch_task/`, …).
+Решта компонентів — драйвери й чиста логіка без власних задач.
+
+| Задача | Папка (`task/`) | Пріоритет | Блокується на | Головна робота |
 |---|---|---|---|---|
-| `wifi_task` | wifi_manager | 4 | event group (тайм-аут) | підключення/перепідключення Wi-Fi, backoff, auto-provisioning |
-| `fetch_task` | main | 4 | `vTaskDelay` (період опитування) | HTTP GET + JSON-парсинг, шле у `alert_queue` |
-| `render_task` | main | 5 | `xQueueReceive(alert_queue)` | єдиний "письменник" framebuffer/дисплей |
-| `button_task` | button | 5 | `xQueueReceive` (ISR events) | дебаунс + вимірювання тривалості натискання |
-| `buzzer_task` | buzzer | 4 | `xQueueReceive` (команди) | неблокуюча сирена/біп |
-| `brightness_ctrl_task` | brightness_ctrl | 3 | `vTaskDelay` (період регулятора) | PI-регулятор яскравості за датчиком світла |
-| `monitor_task` | main | 1 | `vTaskDelay` (30с) | CPU usage stats, watchdog-звіт |
+| `wifi_task` | `wifi_task/` | 4 | event group (тайм-аут) | підключення/перепідключення Wi-Fi, backoff, auto-provisioning |
+| `fetch_task` | `fetch_task/` | 4 | `vTaskDelay` (період опитування) | HTTP GET + JSON-парсинг, шле у `alert_queue` |
+| `render_task` | `render_task/` | 5 | `xQueueReceive(alert_queue)` | єдиний "письменник" framebuffer/дисплей |
+| `button_task` | `button_task/` | 5 | `xQueueReceive` (ISR events) | дебаунс + вимірювання тривалості натискання |
+| `buzzer_task` | `buzzer_task/` | 4 | `xQueueReceive` (команди) | неблокуюча сирена/біп |
+| `brightness_ctrl_task` | `brightness_task/` | 3 | `vTaskDelay` (період регулятора) | PI-регулятор яскравості за датчиком світла |
+| `monitor_task` | `monitor_task/` | 1 | `vTaskDelay` (30с) | CPU usage stats, watchdog-звіт |
 | `indicators` (esp_timer callback) | indicators | — | апаратний таймер | блимання Status/Wi-Fi LED |
 
 Мінімум "2 tasks" із п.3.1 виконано з запасом (7 задач + 1 періодичний
@@ -110,7 +114,8 @@ flowchart LR
 `setpoint = min + lux*(max-min)`, `error = setpoint - поточна_яскравість`,
 далі класичний PI із анти-windup (обмеження інтегральної складової) і
 насиченням виходу в межах `[MIN, MAX]` (Kconfig). Деталі й коефіцієнти —
-`components/brightness_ctrl/brightness_ctrl.c`.
+`components/brightness_ctrl/brightness_ctrl_step.c` (чиста функція, покрита
+хост-тестами), періодичний цикл — `task/brightness_task/brightness_task.c`.
 
 ## 6. Граф залежностей компонентів
 
@@ -122,31 +127,55 @@ flowchart LR
 ```mermaid
 flowchart TD
     main --> app_state
-    main --> button
-    main --> buzzer
     main --> indicators
-    main --> brightness_ctrl
     main --> wifi_manager
-    main --> scraping
-    main --> map
+    main --> wifi_task
+    main --> fetch_task
+    main --> render_task
+    main --> button_task
+    main --> buzzer_task
+    main --> brightness_task
+    main --> monitor_task
+
+    wifi_task --> wifi_manager
+    wifi_manager --> settings
+    wifi_manager --> scraping
+    fetch_task --> settings
+    wifi_task --> app_state
+    fetch_task --> scraping
+    fetch_task --> app_state
+    render_task --> map
+    render_task --> fetch_task
+    render_task --> buzzer_task
+    button_task --> button
+    buzzer_task --> buzzer
+    brightness_task --> brightness_ctrl
+    brightness_task --> light_sensor
+    brightness_task --> backlight
+    brightness_task --> app_state
+    monitor_task --> app_state
 
     indicators --> app_state
-    wifi_manager --> app_state
-    brightness_ctrl --> app_state
-    brightness_ctrl --> light_sensor
-    brightness_ctrl --> backlight
     scraping --> map
 ```
 
 ## 7. Відображення на дисплеї
 
-`render_task` — єдина задача, що малює. Три режими одного й того самого
-framebuffer (`components/map/map_render.c`, вже існували раніше, зараз лише
-використані усвідомлено як частина state machine):
-- `render_map()` — тривоги немає, штрихована мапа (ідле-екран);
-- `render_map_multicolor()` + `render_mark_regions_red()` — тривога:
-  всі активні області з відповіді API підсвічуються червоним;
-- `render_draw_err_banner()` — помилка HTTP/JSON.
+Дані беруться з IoT-ендпоінта alerts.in.ua
+`/v1/iot/active_air_raid_alerts_by_oblast.json` — це рядок із 27 символів
+(`A` — тривога по всій області, `P` — у частині області, `N` — немає),
+розбирається в `components/scraping/alerts_parser.c`.
+
+`render_task` — єдина задача, що малює. Кожен кадр малюється з нуля
+(`components/map/map_render.c`):
+- `render_map()` — базова штрихована мапа;
+- `render_mark_regions_partial()` — часткова тривога, янтарна заливка;
+- `render_mark_regions_red()` — тривога по всій області, червона заливка;
+- `render_draw_err_banner()` — помилка HTTP/розбору: поверх базової мапи
+  лише напис "ERR", без застарілих тривог.
+
+Міста "м. Київ" і "м. Севастополь" окремих полігонів не мають — тривога в
+них показується як часткова у Київській області / Криму.
 
 ## 8. Відомі свідомі спрощення (не приховуємо)
 

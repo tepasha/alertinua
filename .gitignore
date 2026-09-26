@@ -1,5 +1,6 @@
 .pio
 .vscode
 .env
+env/env_config.h
 build
 managed_components
