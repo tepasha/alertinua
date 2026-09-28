@@ -78,8 +78,6 @@ int api_fetch_bearer_auth(const char *url, const char *token, char *outBuf, size
     }
     esp_http_client_set_header(client, "Authorization", auth_header);
 
-    ESP_LOGI(TAG, "GET %s", url);
-
     int status = -1;
     esp_err_t err = esp_http_client_perform(client);
     if (err == ESP_OK) {
@@ -88,8 +86,8 @@ int api_fetch_bearer_auth(const char *url, const char *token, char *outBuf, size
                  status, esp_http_client_get_content_length(client), (unsigned)ctx.written);
     } else {
         // errno сокета і стан купи - щоб відрізнити DNS/TCP-проблему від нестачі пам'яті під TLS (~40КБ).
-        ESP_LOGE(TAG, "Request to %s failed: %s (errno=%d, free heap=%u, largest block=%u)",
-                 url, esp_err_to_name(err), esp_http_client_get_errno(client),
+        ESP_LOGE(TAG, "Request failed: %s (errno=%d, free heap=%u, largest block=%u)",
+                 esp_err_to_name(err), esp_http_client_get_errno(client),
                  (unsigned)esp_get_free_heap_size(),
                  (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_8BIT));
     }
