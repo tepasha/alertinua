@@ -12,7 +12,7 @@
 #include "buzzer_task.h"
 
 #ifndef CONFIG_ALERTINUA_SIREN_MAX_SEC
-#define CONFIG_ALERTINUA_SIREN_MAX_SEC 120 /* запобіжник, якщо Kconfig ще не застосований */
+#define CONFIG_ALERTINUA_SIREN_MAX_SEC 5 /* якщо Kconfig ще не застосований */
 #endif
 
 static const char *TAG = "BUZZER";
@@ -53,11 +53,23 @@ static void buzzer_tone_blocking(uint32_t freq_hz, uint32_t duration_ms) {
     buzzer_hw_off();
 }
 
-/* Один прохід сирени "вгору-вниз" по частоті. Перевіряє команду STOP кожні
- * step_ms, тому реагує на зупинку майже миттєво, а не аж наприкінці 100
- * циклів, як було раніше. Додатково обмежена максимальною тривалістю з
- * Kconfig - якщо хтось забуде викликати buzzer_stop_alarm(), зумер сам
- * замовкне, а не гудітиме нескінченно. */
+/* Після кожного кроку частоти: чи не прийшов STOP (відбій) і чи не вийшов
+ * час сирени. Перевірка на кожному кроці (step_ms), а не раз на прохід -
+ * інакше сирена звучала б до ~1.6с довше за задану тривалість. */
+static void siren_check_stop(int64_t started_us, int64_t max_us) {
+    buzzer_cmd_t peek;
+    if (xQueuePeek(s_cmd_queue, &peek, 0) == pdTRUE && peek.kind == BUZZER_CMD_ALARM_STOP) {
+        s_alarm_should_run = false;
+    }
+    if (s_alarm_should_run && esp_timer_get_time() - started_us >= max_us) {
+        ESP_LOGI(TAG, "siren played %d s, stop", CONFIG_ALERTINUA_SIREN_MAX_SEC);
+        s_alarm_should_run = false;
+    }
+}
+
+/* Сирена "вгору-вниз" по частоті на початку тривоги. Звучить
+ * CONFIG_ALERTINUA_SIREN_MAX_SEC секунд і замовкає сама; STOP (відбій)
+ * зупиняє її раніше. */
 static void run_siren_until_stopped(void) {
     const uint32_t freq_low = 400;
     const uint32_t freq_high = 1200;
@@ -70,25 +82,18 @@ static void run_siren_until_stopped(void) {
     buzzer_hw_on();
 
     while (s_alarm_should_run) {
-        // Сирена може звучати до CONFIG_ALERTINUA_SIREN_MAX_SEC (120с) - це
-        // значно довше за тайм-аут watchdog, тож скидаємо його щопроходу.
+        // Тривалість задається в Kconfig і може бути довшою за тайм-аут
+        // watchdog (10с), тож скидаємо його щопроходу.
         esp_task_wdt_reset();
         for (uint32_t f = freq_low; f < freq_high && s_alarm_should_run; f += step_hz) {
             buzzer_hw_set_freq(f);
             vTaskDelay(pdMS_TO_TICKS(step_ms));
-
-            buzzer_cmd_t peek;
-            if (xQueuePeek(s_cmd_queue, &peek, 0) == pdTRUE && peek.kind == BUZZER_CMD_ALARM_STOP) {
-                s_alarm_should_run = false;
-            }
-            if (esp_timer_get_time() - started_us > max_us) {
-                ESP_LOGW(TAG, "siren max duration (%d s) reached, auto-stop", CONFIG_ALERTINUA_SIREN_MAX_SEC);
-                s_alarm_should_run = false;
-            }
+            siren_check_stop(started_us, max_us);
         }
         for (uint32_t f = freq_high; f > freq_low && s_alarm_should_run; f -= step_hz) {
             buzzer_hw_set_freq(f);
             vTaskDelay(pdMS_TO_TICKS(step_ms));
+            siren_check_stop(started_us, max_us);
         }
     }
 
