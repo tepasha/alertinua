@@ -365,7 +365,7 @@ esp_lcd_panel_handle_t display_init(void) {
     esp_lcd_panel_handle_t panel_handle = NULL;
     esp_lcd_panel_dev_config_t panel_config = {
         .reset_gpio_num = PIN_RST,
-        .rgb_ele_order = LCD_RGB_ELEMENT_ORDER_BGR, /* якщо кольори переплутані - зміни на _RGB */
+        .rgb_ele_order = LCD_RGB_ELEMENT_ORDER_RGB, /* з _BGR червоний показувався синім */
         .bits_per_pixel = 16,
     };
     err = esp_lcd_new_panel_st7789(io_handle, &panel_config, &panel_handle);
