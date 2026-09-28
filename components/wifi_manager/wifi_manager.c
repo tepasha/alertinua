@@ -37,6 +37,15 @@ static const char *TAG = "wifi_manager";
 static EventGroupHandle_t s_wifi_event_group = NULL;
 static int s_retry_num = 0;
 static bool s_wifi_stack_started = false;
+static bool s_provisioning_active = false;
+
+/* Мережі, знайдені одним скануванням на вході в provisioning (див.
+ * wifi_scan_networks). Сканувати на кожен GET не варто: під час сканування
+ * радіо стрибає по каналах, і телефон, підключений до SoftAP, може відпасти. */
+#define WIFI_SCAN_MAX_APS 20
+static char s_scan_ssids[WIFI_SCAN_MAX_APS][33];
+static bool s_scan_secured[WIFI_SCAN_MAX_APS];
+static int s_scan_count = 0;
 
 /* ------------------------------------------------------------------------ */
 /* Сторінка налаштування Wi-Fi (SoftAP provisioning)                        */
@@ -77,19 +86,33 @@ static const char *SETTINGS_PAGE_FORM =
 "  <label for=\"oblast\">Область для сирени та індикації</label>"
 "  <select id=\"oblast\" name=\"oblast\">";
 
-static const char *SETTINGS_PAGE_TAIL =
+/* Після списку областей - початок блоку Wi-Fi зі списком знайдених мереж.
+ * Вибір у списку лише підставляє назву в поле ssid, тож прихована мережа
+ * все ще вводиться вручну, а /save приймає те саме поле, що й раніше. */
+static const char *SETTINGS_PAGE_WIFI =
 "  </select>"
 "  <h3>Wi-Fi</h3>"
+"  <label for=\"ssid_list\">Доступні мережі</label>"
+"  <select id=\"ssid_list\" onchange=\"if(this.value)document.getElementById('ssid').value=this.value\">";
+
+static const char *SETTINGS_PAGE_TAIL =
+"  </select>"
 "  <label for=\"ssid\">Назва мережі (SSID)</label>"
 "  <input id=\"ssid\" name=\"ssid\" maxlength=\"31\">"
 "  <label for=\"password\">Пароль</label>"
 "  <input id=\"password\" name=\"password\" type=\"password\" maxlength=\"63\">"
-"  <p class=\"hint\">Залиште SSID порожнім, щоб не змінювати Wi-Fi.</p>"
+"  <p class=\"hint\">Виберіть мережу зі списку або введіть назву вручну (напр. для прихованої мережі). "
+"Залиште SSID порожнім, щоб не змінювати Wi-Fi.</p>"
 "  <button type=\"submit\">Зберегти і перезавантажити</button>"
 "</form>"
 "</div></body></html>";
 
 static void sta_event_handler(void *arg, esp_event_base_t event_base, int32_t event_id, void *event_data) {
+    // У режимі налаштування STA-інтерфейс (APSTA) потрібен лише для
+    // сканування - не пробувати підключатись до старої мережі.
+    if (s_provisioning_active && event_base == WIFI_EVENT) {
+        return;
+    }
     if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START) {
         esp_wifi_connect();
     } else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
@@ -170,6 +193,9 @@ static esp_err_t wifi_stack_start_once(const char *ssid, const char *password) {
  * через wifi_manager_wait_connect() короткими кроками - щоб задача-власник
  * встигала скидати watchdog. */
 bool wifi_manager_begin_connect(const char *ssid, const char *password) {
+    if (s_provisioning_active) {
+        return false; // esp_wifi_connect() в APSTA збив би сканування і канал SoftAP
+    }
     if (s_wifi_event_group == NULL) {
         s_wifi_event_group = xEventGroupCreate();
         if (s_wifi_event_group == NULL) {
@@ -217,6 +243,91 @@ bool wifi_manager_still_connected(uint32_t poll_ms) {
 /* Provisioning: SoftAP + маленький HTTP-сервер зі сторінкою налаштування   */
 /* ------------------------------------------------------------------------ */
 
+static void html_escape(const char *in, char *out, size_t out_size) {
+    size_t o = 0;
+    for (; *in; in++) {
+        const char *rep = NULL;
+        switch (*in) {
+            case '&':  rep = "&amp;";  break;
+            case '<':  rep = "&lt;";   break;
+            case '>':  rep = "&gt;";   break;
+            case '"':  rep = "&quot;"; break;
+            case '\'': rep = "&#39;";  break;
+        }
+        size_t len = rep ? strlen(rep) : 1;
+        if (o + len >= out_size) {
+            break; // гранична умова: не переповнити буфер призначення
+        }
+        if (rep) {
+            memcpy(out + o, rep, len);
+        } else {
+            out[o] = *in;
+        }
+        o += len;
+    }
+    out[o] = '\0';
+}
+
+/* Одне блокуюче сканування (~2-3с) у режимі APSTA. Результат - унікальні
+ * непорожні SSID від найсильнішого сигналу до найслабшого. */
+static void wifi_scan_networks(void) {
+    s_scan_count = 0;
+
+    esp_err_t err = esp_wifi_scan_start(NULL, true);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "esp_wifi_scan_start: %s", esp_err_to_name(err));
+        return;
+    }
+
+    uint16_t num = WIFI_SCAN_MAX_APS;
+    wifi_ap_record_t *records = calloc(num, sizeof(wifi_ap_record_t));
+    if (records == NULL) {
+        ESP_LOGE(TAG, "не вдалось виділити пам'ять під результати сканування");
+        esp_wifi_clear_ap_list();
+        return;
+    }
+    err = esp_wifi_scan_get_ap_records(&num, records);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "esp_wifi_scan_get_ap_records: %s", esp_err_to_name(err));
+        free(records);
+        return;
+    }
+
+    // Сортування за RSSI (спадання) - записів не більше 20, вистачає простого.
+    for (int a = 0; a < num - 1; a++) {
+        for (int b = a + 1; b < num; b++) {
+            if (records[b].rssi > records[a].rssi) {
+                wifi_ap_record_t tmp = records[a];
+                records[a] = records[b];
+                records[b] = tmp;
+            }
+        }
+    }
+
+    for (int i = 0; i < num; i++) {
+        const char *ssid = (const char *)records[i].ssid;
+        if (ssid[0] == '\0') {
+            continue; // прихована мережа
+        }
+        bool dup = false; // кілька точок однієї мережі (mesh) - показати раз
+        for (int j = 0; j < s_scan_count; j++) {
+            if (strcmp(s_scan_ssids[j], ssid) == 0) {
+                dup = true;
+                break;
+            }
+        }
+        if (dup) {
+            continue;
+        }
+        strncpy(s_scan_ssids[s_scan_count], ssid, sizeof(s_scan_ssids[0]) - 1);
+        s_scan_ssids[s_scan_count][sizeof(s_scan_ssids[0]) - 1] = '\0';
+        s_scan_secured[s_scan_count] = records[i].authmode != WIFI_AUTH_OPEN;
+        s_scan_count++;
+    }
+    free(records);
+    ESP_LOGI(TAG, "scan found %d networks", s_scan_count);
+}
+
 static esp_err_t root_get_handler(httpd_req_t *req) {
     char current[SETTINGS_OBLAST_MAX_LEN];
     settings_get_oblast(current, sizeof(current));
@@ -251,6 +362,23 @@ static esp_err_t root_get_handler(httpd_req_t *req) {
         snprintf(option, sizeof(option), "<option value=\"%d\"%s>%s</option>",
                  i, (strcmp(name, current) == 0) ? " selected" : "", name);
         httpd_resp_sendstr_chunk(req, option);
+    }
+
+    httpd_resp_sendstr_chunk(req, SETTINGS_PAGE_WIFI);
+    if (s_scan_count == 0) {
+        httpd_resp_sendstr_chunk(req, "<option value=\"\">Мереж не знайдено</option>");
+    } else {
+        httpd_resp_sendstr_chunk(req, "<option value=\"\">— виберіть мережу —</option>");
+    }
+    // SSID - довільні байти від чужих точок доступу, тому екрануємо.
+    // static: екранований SSID може займати до 6x довжини, а стек сервера малий.
+    static char ssid_html[33 * 6];
+    static char ssid_option[sizeof(ssid_html) * 2 + 64];
+    for (int i = 0; i < s_scan_count; i++) {
+        html_escape(s_scan_ssids[i], ssid_html, sizeof(ssid_html));
+        snprintf(ssid_option, sizeof(ssid_option), "<option value=\"%s\">%s%s</option>",
+                 ssid_html, ssid_html, s_scan_secured[i] ? " 🔒" : "");
+        httpd_resp_sendstr_chunk(req, ssid_option);
     }
 
     httpd_resp_sendstr_chunk(req, SETTINGS_PAGE_TAIL);
@@ -389,8 +517,6 @@ static const httpd_uri_t save_uri = {
     .handler = save_post_handler,
 };
 
-static bool s_provisioning_active = false;
-
 void wifi_manager_start_provisioning(void) {
     if (s_provisioning_active) {
         ESP_LOGW(TAG, "already in provisioning mode");
@@ -419,9 +545,13 @@ void wifi_manager_start_provisioning(void) {
         ap_config.ap.authmode = WIFI_AUTH_OPEN;
     }
 
-    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_AP));
+    // APSTA, а не просто AP: STA-інтерфейс потрібен для сканування мереж
+    // для списку на сторінці налаштувань.
+    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_APSTA));
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_AP, &ap_config));
     ESP_ERROR_CHECK(esp_wifi_start());
+
+    wifi_scan_networks(); // до старту сервера, поки до SoftAP ще ніхто не підключений
 
     httpd_handle_t server = NULL;
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();

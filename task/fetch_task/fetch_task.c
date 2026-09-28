@@ -29,6 +29,9 @@ static const char *TAG = "FETCH";
 #ifndef ALERTINUA_API_TOKEN
 #define ALERTINUA_API_TOKEN ""
 #endif
+/* Повна адреса запиту: токен іде ще й query-параметром (API приймає обидва
+ * способи), поряд із заголовком Authorization у api_fetch_bearer_auth. */
+#define ALERTINUA_API_REQUEST_URL ALERTINUA_API_URL "?token=" ALERTINUA_API_TOKEN
 #ifndef CONFIG_ALERTINUA_POLL_INTERVAL_SEC
 #define CONFIG_ALERTINUA_POLL_INTERVAL_SEC 60
 #endif
@@ -85,7 +88,7 @@ static void fetch_task(void *arg) {
         // обмежує власний тайм-аут HTTP-клієнта (див. scraping.c).
         esp_task_wdt_delete(NULL);
         int64_t t_fetch_start = esp_timer_get_time();
-        int status = api_fetch_bearer_auth(ALERTINUA_API_URL, ALERTINUA_API_TOKEN,
+        int status = api_fetch_bearer_auth(ALERTINUA_API_REQUEST_URL, ALERTINUA_API_TOKEN,
                                             response_body, sizeof(response_body));
         int64_t fetch_us = esp_timer_get_time() - t_fetch_start;
         esp_task_wdt_add(NULL);

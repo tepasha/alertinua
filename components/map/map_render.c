@@ -21,6 +21,11 @@
 
 static const char *TAG = "MAP_RENDERING";
 
+/* Точки мапи займають рядки 16..132 з 135 - знизу майже впритул. Зсув
+ * угору на 7 центрує мапу по вертикалі (по 9 пікселів зверху й знизу).
+ * Стосується лише контурів областей; банер "ERR" центрується окремо. */
+#define MAP_Y_SHIFT 7
+
 static inline uint16_t rgb565(uint8_t r, uint8_t g, uint8_t b) {
     return (uint16_t) (((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3));
 }
@@ -104,7 +109,7 @@ static void fb_fill_polygon(uint16_t *fb, const map_point_t *pts, int n, uint16_
         }
         for (int a = 0; a + 1 < count; a += 2) {
             for (int x = xs[a]; x <= xs[a + 1]; x++) {
-                fb_set_px(fb, x, y, color_be);
+                fb_set_px(fb, x, y - MAP_Y_SHIFT, color_be);
             }
         }
     }
@@ -113,7 +118,7 @@ static void fb_fill_polygon(uint16_t *fb, const map_point_t *pts, int n, uint16_
 static void fb_draw_polygon_outline(uint16_t *fb, const map_point_t *pts, int n, uint16_t color_be) {
     for (int i = 0; i < n; i++) {
         int j = (i + 1) % n;
-        fb_draw_line(fb, pts[i].x, pts[i].y, pts[j].x, pts[j].y, color_be);
+        fb_draw_line(fb, pts[i].x, pts[i].y - MAP_Y_SHIFT, pts[j].x, pts[j].y - MAP_Y_SHIFT, color_be);
     }
 }
 
@@ -159,7 +164,7 @@ static void fb_fill_polygon_hatched(uint16_t *fb, const map_point_t *pts, int n,
             for (int x = xs[a]; x <= xs[a + 1]; x++) {
                 int diag = ((x - y) % period + period) % period; /* коректний mod для від'ємних x-y */
                 if (diag == 0) {
-                    fb_set_px(fb, x, y, color_be);
+                    fb_set_px(fb, x, y - MAP_Y_SHIFT, color_be);
                 }
             }
         }
@@ -394,11 +399,14 @@ esp_lcd_panel_handle_t display_init(void) {
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "esp_lcd_panel_swap_xy: %d", err);
     }
-    err = esp_lcd_panel_mirror(panel_handle, false, true);
+    /* Обидва прапорці навпаки від (false, true) = поворот на 180°. Разом з віссю, що має 135
+     * пікселів, міняється і її зсув: 240 - 135 = 105 рядків не діляться
+     * навпіл, тож з цього боку це 53, а не 52. */
+    err = esp_lcd_panel_mirror(panel_handle, true, false);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "esp_lcd_panel_mirror: %d", err);
     }
-    err = esp_lcd_panel_set_gap(panel_handle, 40, 52);
+    err = esp_lcd_panel_set_gap(panel_handle, 40, 53);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "esp_lcd_panel_set_gap: %d", err);
     }

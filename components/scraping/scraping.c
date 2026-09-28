@@ -3,6 +3,8 @@
 #include <inttypes.h>
 
 #include "esp_log.h"
+#include "esp_system.h"
+#include "esp_heap_caps.h"
 #include "esp_http_client.h"
 #include "esp_crt_bundle.h"
 
@@ -75,7 +77,8 @@ int api_fetch_bearer_auth(const char *url, const char *token, char *outBuf, size
         ESP_LOGW(TAG, "токен задовгий для буфера заголовка, буде обрізаний");
     }
     esp_http_client_set_header(client, "Authorization", auth_header);
-    esp_http_client_set_header(client, "Accept", "application/json");
+
+    ESP_LOGI(TAG, "GET %s", url);
 
     int status = -1;
     esp_err_t err = esp_http_client_perform(client);
@@ -84,7 +87,11 @@ int api_fetch_bearer_auth(const char *url, const char *token, char *outBuf, size
         ESP_LOGI(TAG, "HTTP status: %d, content-length: %" PRId64 ", отримано %u байт",
                  status, esp_http_client_get_content_length(client), (unsigned)ctx.written);
     } else {
-        ESP_LOGE(TAG, "Request failed: %s", esp_err_to_name(err));
+        // errno сокета і стан купи - щоб відрізнити DNS/TCP-проблему від нестачі пам'яті під TLS (~40КБ).
+        ESP_LOGE(TAG, "Request to %s failed: %s (errno=%d, free heap=%u, largest block=%u)",
+                 url, esp_err_to_name(err), esp_http_client_get_errno(client),
+                 (unsigned)esp_get_free_heap_size(),
+                 (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_8BIT));
     }
 
     esp_http_client_cleanup(client);
