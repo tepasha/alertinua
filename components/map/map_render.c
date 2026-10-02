@@ -14,7 +14,6 @@
 #define PIN_CS   GPIO_NUM_5
 #define PIN_DC   GPIO_NUM_16
 #define PIN_RST  GPIO_NUM_23
-#define PIN_BL   GPIO_NUM_4
 
 #define LCD_HOST      SPI2_HOST
 #define LCD_PCLK_HZ   (20 * 1000 * 1000)
@@ -327,16 +326,10 @@ void render_draw_err_banner(uint16_t *fb) {
 }
 
 esp_lcd_panel_handle_t display_init(void) {
-    gpio_config_t bl_cfg = {
-        .pin_bit_mask = 1ULL << PIN_BL,
-        .mode = GPIO_MODE_OUTPUT,
-    };
-
-    esp_err_t err = gpio_config(&bl_cfg);
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "gpio_config: %d", err);
-    }
-    gpio_set_level(PIN_BL, 1); /* підсвітка увімкнена */
+    /* Підсвітку (GPIO4) тут не чіпаємо: нею через ШІМ керує компонент
+     * backlight за датчиком освітлення. gpio_config() на цьому піні
+     * від'єднав би його від LEDC, і яскравість застрягла б на 100%. */
+    esp_err_t err;
 
     spi_bus_config_t buscfg = {
         .sclk_io_num = PIN_SCLK,

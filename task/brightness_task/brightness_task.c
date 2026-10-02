@@ -30,6 +30,7 @@ static void brightness_ctrl_task(void *arg) {
     float current_percent = (float)CONFIG_ALERTINUA_BRIGHTNESS_MAX_PERCENT;
     float integral = 0.0f;
     uint32_t consecutive_sensor_errors = 0;
+    uint32_t log_counter = 0;
 
     const TickType_t period_ticks = pdMS_TO_TICKS(CONFIG_ALERTINUA_BRIGHTNESS_PERIOD_MS);
     const float period_s = (float)CONFIG_ALERTINUA_BRIGHTNESS_PERIOD_MS / 1000.0f;
@@ -59,6 +60,12 @@ static void brightness_ctrl_task(void *arg) {
             uint8_t percent_u8 = (uint8_t)(current_percent + 0.5f);
             backlight_set_percent(percent_u8);
             app_state_set_brightness(percent_u8);
+
+            // Раз на ~10с - щоб у лозі було видно, чи датчик реагує на світло.
+            if (++log_counter >= 10000 / CONFIG_ALERTINUA_BRIGHTNESS_PERIOD_MS) {
+                log_counter = 0;
+                ESP_LOGI(TAG, "світло=%.2f (0=темно, 1=світло), підсвітка=%u%%", lux, percent_u8);
+            }
         }
 
         vTaskDelay(period_ticks);
