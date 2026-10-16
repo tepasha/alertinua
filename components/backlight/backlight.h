@@ -12,3 +12,10 @@
 
 void backlight_init(void);
 void backlight_set_percent(uint8_t percent); // 0..100, значення понад 100 насичуються
+
+/*
+ * Перед deep sleep: тримає пін підсвітки в 0 (RTC hold), інакше у сні він
+ * "висить" і підсвітка може тьмяно світити. Пін від'єднується від LEDC, тож
+ * brightness_task уже не ввімкне його. Тримання знімає backlight_init().
+ */
+void backlight_off_for_deep_sleep(void);

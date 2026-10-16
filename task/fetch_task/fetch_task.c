@@ -53,17 +53,50 @@ static void wdt_friendly_delay_ms(uint32_t ms) {
     esp_task_wdt_reset();
 }
 
+/* Буфер відповіді - static (виділений один раз у .bss), щоб не робити       */
+/* malloc/free на кожен цикл опитування (п.6.3 - без надлишкових копій/     */
+/* перевиділень). Спільний для fetch_task і перевірки під час сну           */
+/* (autonomy_task) - вони ніколи не працюють одночасно.                     */
+static char s_response_body[HTTP_RESPONSE_BUF_SIZE];
+
+bool fetch_alerts_once(const char *oblast, alert_msg_t *msg) {
+    memset(msg, 0, sizeof(*msg));
+
+    int64_t t_fetch_start = esp_timer_get_time();
+    int status = api_fetch_bearer_auth(ALERTINUA_API_REQUEST_URL, ALERTINUA_API_TOKEN,
+                                        s_response_body, sizeof(s_response_body));
+    int64_t fetch_us = esp_timer_get_time() - t_fetch_start;
+
+    if (status < 200 || status >= 300) {
+        ESP_LOGE(TAG, "HTTP-запит не вдався, status=%d (fetch=%lld us)", status, (long long)fetch_us);
+        app_state_record_fetch(fetch_us, false);
+        return false;
+    }
+
+    int64_t t_parse_start = esp_timer_get_time();
+    bool ok = alerts_parse(s_response_body, oblast, &msg->parsed);
+    int64_t parse_us = esp_timer_get_time() - t_parse_start;
+
+    ESP_LOGI(TAG, "fetch=%lld us parse=%lld us alarm=%d full=%d partial=%d",
+             (long long)fetch_us, (long long)parse_us,
+             (int)msg->parsed.alarm_active_selected, msg->parsed.active_region_count,
+             msg->parsed.partial_region_count);
+    if (!ok) {
+        ESP_LOGE(TAG, "не вдалось розібрати/валідувати відповідь API");
+    }
+
+    msg->fetch_ok = ok;
+    app_state_record_fetch(fetch_us + parse_us, ok);
+    return ok;
+}
+
 /* ------------------------------------------------------------------------ */
 /* fetch_task: періодично опитує alerts.in.ua, парсить JSON, шле результат  */
-/* у alert_queue. Буфер відповіді - static (виділений один раз у .bss), щоб */
-/* не робити malloc/free на кожен цикл опитування (п.6.3 - без надлишкових  */
-/* копій/перевиділень).                                                     */
+/* у alert_queue.                                                           */
 /* ------------------------------------------------------------------------ */
 static void fetch_task(void *arg) {
     (void)arg;
     esp_task_wdt_add(NULL);
-
-    static char response_body[HTTP_RESPONSE_BUF_SIZE];
 
     // Область задається через веб-інтерфейс і зберігається в NVS; зміна
     // застосовується після перезавантаження, яке сторінка робить сама.
@@ -87,40 +120,16 @@ static void fetch_task(void *arg) {
         // Тому на час запиту задача відписується від watchdog - зависання тут
         // обмежує власний тайм-аут HTTP-клієнта (див. scraping.c).
         esp_task_wdt_delete(NULL);
-        int64_t t_fetch_start = esp_timer_get_time();
-        int status = api_fetch_bearer_auth(ALERTINUA_API_REQUEST_URL, ALERTINUA_API_TOKEN,
-                                            response_body, sizeof(response_body));
-        int64_t fetch_us = esp_timer_get_time() - t_fetch_start;
+        alert_msg_t msg;
+        bool ok = fetch_alerts_once(oblast, &msg);
         esp_task_wdt_add(NULL);
 
-        alert_msg_t msg = { 0 };
-
-        if (status >= 200 && status < 300) {
-            int64_t t_parse_start = esp_timer_get_time();
-            bool ok = alerts_parse(response_body, oblast, &msg.parsed);
-            int64_t parse_us = esp_timer_get_time() - t_parse_start;
-
-            ESP_LOGI(TAG, "fetch=%lld us parse=%lld us alarm=%d full=%d partial=%d",
-                     (long long)fetch_us, (long long)parse_us,
-                     (int)msg.parsed.alarm_active_selected, msg.parsed.active_region_count,
-                     msg.parsed.partial_region_count);
-
-            msg.fetch_ok = ok;
-            app_state_record_fetch(fetch_us + parse_us, ok);
-
-            if (ok) {
-                app_state_set_alarm(msg.parsed.alarm_active_selected,
-                                     msg.parsed.active_region_indices,
-                                     msg.parsed.active_region_count);
-                app_state_set(msg.parsed.alarm_active_selected ? APP_STATE_ALARM : APP_STATE_CLEAR);
-            } else {
-                ESP_LOGE(TAG, "не вдалось розібрати/валідувати відповідь API");
-                app_state_set(APP_STATE_ERROR);
-            }
+        if (ok) {
+            app_state_set_alarm(msg.parsed.alarm_active_selected,
+                                 msg.parsed.active_region_indices,
+                                 msg.parsed.active_region_count);
+            app_state_set(msg.parsed.alarm_active_selected ? APP_STATE_ALARM : APP_STATE_CLEAR);
         } else {
-            ESP_LOGE(TAG, "HTTP-запит не вдався, status=%d (fetch=%lld us)", status, (long long)fetch_us);
-            msg.fetch_ok = false;
-            app_state_record_fetch(fetch_us, false);
             app_state_set(APP_STATE_ERROR);
         }
 

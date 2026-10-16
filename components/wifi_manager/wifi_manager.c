@@ -209,6 +209,10 @@ bool wifi_manager_begin_connect(const char *ssid, const char *password) {
         if (err != ESP_OK) {
             return false;
         }
+    } else if (wifi_manager_is_connected()) {
+        // Вже підключено (напр. перевірка під час сну в autonomy_task
+        // підключилась раніше за wifi_task) - не рвати живе з'єднання.
+        return true;
     } else {
         s_retry_num = 0;
         xEventGroupClearBits(s_wifi_event_group, WIFI_CONNECTED_BIT | WIFI_FAIL_BIT);
@@ -237,6 +241,18 @@ wifi_connect_result_t wifi_manager_wait_connect(uint32_t wait_ms) {
 bool wifi_manager_still_connected(uint32_t poll_ms) {
     EventBits_t bits = xEventGroupWaitBits(s_wifi_event_group, WIFI_FAIL_BIT, pdFALSE, pdFALSE, pdMS_TO_TICKS(poll_ms));
     return (bits & WIFI_FAIL_BIT) == 0;
+}
+
+bool wifi_manager_is_connected(void) {
+    if (s_wifi_event_group == NULL) {
+        return false;
+    }
+    EventBits_t bits = xEventGroupGetBits(s_wifi_event_group);
+    return (bits & WIFI_CONNECTED_BIT) && !(bits & WIFI_FAIL_BIT);
+}
+
+bool wifi_manager_is_provisioning(void) {
+    return s_provisioning_active;
 }
 
 /* ------------------------------------------------------------------------ */

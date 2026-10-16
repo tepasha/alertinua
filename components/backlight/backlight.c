@@ -1,4 +1,5 @@
 #include "driver/ledc.h"
+#include "driver/rtc_io.h"
 #include "esp_err.h"
 #include "esp_log.h"
 
@@ -14,6 +15,11 @@ static const char *TAG = "BACKLIGHT";
 static uint16_t s_max_duty = (1 << 10) - 1;
 
 void backlight_init(void) {
+    // Після пробудження з deep sleep пін ще утримується в 0 як RTC IO
+    // (див. backlight_off_for_deep_sleep) - повернути його LEDC.
+    rtc_gpio_hold_dis(BACKLIGHT_GPIO);
+    rtc_gpio_deinit(BACKLIGHT_GPIO);
+
     const ledc_timer_config_t timer_cfg = {
         .speed_mode = BACKLIGHT_LEDC_MODE,
         .duty_resolution = BACKLIGHT_DUTY_RES,
@@ -56,4 +62,11 @@ void backlight_set_percent(uint8_t percent) {
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "ledc_update_duty: %s", esp_err_to_name(err));
     }
+}
+
+void backlight_off_for_deep_sleep(void) {
+    rtc_gpio_init(BACKLIGHT_GPIO);
+    rtc_gpio_set_direction(BACKLIGHT_GPIO, RTC_GPIO_MODE_OUTPUT_ONLY);
+    rtc_gpio_set_level(BACKLIGHT_GPIO, 0);
+    rtc_gpio_hold_en(BACKLIGHT_GPIO);
 }

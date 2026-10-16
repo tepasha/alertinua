@@ -22,4 +22,5 @@ idf_component_register(
         buzzer_task
         brightness_task
         monitor_task
+        autonomy_task
 )

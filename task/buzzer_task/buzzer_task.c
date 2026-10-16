@@ -153,6 +153,10 @@ void buzzer_stop_alarm(void) {
     xQueueSend(s_cmd_queue, &cmd, 0);
 }
 
+bool buzzer_is_alarm_playing(void) {
+    return s_alarm_should_run;
+}
+
 void buzzer_beep(uint32_t freq_hz, uint32_t duration_ms) {
     if (s_cmd_queue == NULL) {
         return;

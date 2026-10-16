@@ -773,6 +773,19 @@ CONFIG_ALERTINUA_AUTO_PROVISION_AFTER_FAILURES=10
 # end of Wi-Fi
 
 #
+# Автономний режим (deep sleep)
+#
+# default:
+CONFIG_ALERTINUA_AUTONOMY_ENABLE=y
+# default:
+CONFIG_ALERTINUA_AUTONOMY_IDLE_SEC=15
+# default:
+CONFIG_ALERTINUA_AUTONOMY_POLL_SEC=60
+# default:
+CONFIG_ALERTINUA_AUTONOMY_WIFI_TIMEOUT_SEC=15
+# end of Автономний режим (deep sleep)
+
+#
 # Надійність
 #
 # default:

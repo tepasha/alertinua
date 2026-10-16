@@ -20,6 +20,7 @@
 #include "buzzer_task.h"
 #include "brightness_task.h"
 #include "monitor_task.h"
+#include "autonomy_task.h"
 
 static const char *TAG = "MAIN";
 
@@ -47,19 +48,24 @@ void app_main(void) {
         esp_restart();
     }
 
+    // Пробудження таймером із deep sleep: тиха перевірка тривог. Якщо нової
+    // тривоги немає - пристрій тут же засинає знову і далі не йде.
+    autonomy_handle_wakeup(alert_queue);
+
     indicators_init();
     if (battery_init() != ESP_OK) {
         ESP_LOGW(TAG, "не вдалось ініціалізувати вимірювання батареї");
     }
     brightness_task_start();
     buzzer_task_start();
-    button_task_start(SETUP_BUTTON_GPIO, LONG_PRESS_MS, on_setup_button_long_press);
+    button_task_start(SETUP_BUTTON_GPIO, LONG_PRESS_MS, autonomy_notify_activity, on_setup_button_long_press);
 
     render_task_start(alert_queue);
     fetch_task_start(alert_queue);
     monitor_task_start();
 
     wifi_task_start();
+    autonomy_task_start();
 
     ESP_LOGI(TAG, "alertinua: усі фонові задачі запущені, app_main завершується");
 }

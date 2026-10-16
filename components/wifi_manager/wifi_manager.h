@@ -35,6 +35,12 @@ wifi_connect_result_t wifi_manager_wait_connect(uint32_t wait_ms);
  */
 bool wifi_manager_still_connected(uint32_t poll_ms);
 
+/* true - IP отримано і стек не повідомляв про остаточну втрату зв'язку. */
+bool wifi_manager_is_connected(void);
+
+/* true - пристрій у режимі налаштування (SoftAP); спати в ньому не можна. */
+bool wifi_manager_is_provisioning(void);
+
 /*
  * Ручний перехід у режим налаштування Wi-Fi (SoftAP "ESP32-Setup" + сторінка
  * http://192.168.4.1/). Викликається з довгого натискання кнопки (button_task)

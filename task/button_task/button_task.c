@@ -16,6 +16,7 @@ static const char *TAG = "BUTTON";
 typedef struct {
     int gpio_num;
     int long_press_ms;
+    button_press_cb_t on_press;
     button_long_press_cb_t on_long_press;
 } button_watch_args_t;
 
@@ -50,6 +51,9 @@ static void button_task(void *arg) {
                 held = true;
                 long_press_fired = false;
                 press_start_us = esp_timer_get_time();
+                if (args->on_press) {
+                    args->on_press();
+                }
             } else if (!pressed_now && held) {
                 held = false;
             }
@@ -66,7 +70,8 @@ static void button_task(void *arg) {
     }
 }
 
-void button_task_start(int gpio_num, int long_press_ms, button_long_press_cb_t on_long_press) {
+void button_task_start(int gpio_num, int long_press_ms, button_press_cb_t on_press,
+                       button_long_press_cb_t on_long_press) {
     if (button_init(gpio_num) != ESP_OK) {
         return;
     }
@@ -78,6 +83,7 @@ void button_task_start(int gpio_num, int long_press_ms, button_long_press_cb_t o
     }
     args->gpio_num = gpio_num;
     args->long_press_ms = long_press_ms;
+    args->on_press = on_press;
     args->on_long_press = on_long_press;
 
     xTaskCreate(button_task, "button_task", 3072, args, 5, NULL);

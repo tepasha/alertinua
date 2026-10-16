@@ -1,4 +1,5 @@
 #pragma once
+#include <stdbool.h>
 #include <stdint.h>
 
 /*
@@ -18,3 +19,4 @@ void buzzer_task_start(void);
 void buzzer_start_alarm(void); // почати сирену (з обмеженням часу, див. Kconfig)
 void buzzer_stop_alarm(void);  // негайно зупинити сирену
 void buzzer_beep(uint32_t freq_hz, uint32_t duration_ms); // короткий одноразовий сигнал (напр. підтвердження)
+bool buzzer_is_alarm_playing(void); // true, поки звучить сирена (щоб не заснути посеред неї)

@@ -83,6 +83,49 @@ menu "Alertinua Configuration"
             range 1 100
     endmenu
 
+    menu "Автономний режим (deep sleep)"
+        config ALERTINUA_AUTONOMY_ENABLE
+            bool "Засинати, коли пристроєм не користуються"
+            default y
+            help
+                Через ALERTINUA_AUTONOMY_IDLE_SEC секунд без натискань кнопки
+                пристрій вимикає дисплей і переходить у deep sleep. Кнопка
+                BOOT будить його у звичайний режим. Уві сні він раз на
+                ALERTINUA_AUTONOMY_POLL_SEC секунд тихо (без дисплея)
+                опитує API; якщо у вибраній області почалась тривога -
+                прокидається, малює мапу і вмикає сирену.
+
+        config ALERTINUA_AUTONOMY_IDLE_SEC
+            int "Заснути через N секунд без натискань кнопки"
+            depends on ALERTINUA_AUTONOMY_ENABLE
+            default 15
+            range 5 3600
+            help
+                Відлік починається після ввімкнення/пробудження і
+                перезапускається кожним натисканням кнопки. Поки звучить
+                сирена або відкритий режим налаштування Wi-Fi, пристрій
+                не засинає.
+
+        config ALERTINUA_AUTONOMY_POLL_SEC
+            int "Інтервал опитування API уві сні (секунди)"
+            depends on ALERTINUA_AUTONOMY_ENABLE
+            default 60
+            range 15 3600
+            help
+                Кожне пробудження - це підключення до Wi-Fi і HTTPS-запит
+                (кілька секунд роботи радіо), тож що рідше, то довше
+                живе акумулятор, але тим пізніше пристрій помітить тривогу.
+
+        config ALERTINUA_AUTONOMY_WIFI_TIMEOUT_SEC
+            int "Скільки чекати Wi-Fi під час перевірки уві сні (секунди)"
+            depends on ALERTINUA_AUTONOMY_ENABLE
+            default 15
+            range 5 60
+            help
+                Не вдалось підключитись за цей час - пристрій знову
+                засинає до наступної перевірки.
+    endmenu
+
     menu "Надійність"
         config ALERTINUA_WDT_TIMEOUT_SEC
             int "Тайм-аут Task Watchdog Timer, сек"

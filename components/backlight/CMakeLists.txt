@@ -1,5 +1,5 @@
 idf_component_register(
     SRCS "backlight.c"
     INCLUDE_DIRS "."
-    REQUIRES esp_driver_ledc log
+    REQUIRES esp_driver_ledc esp_driver_gpio log
 )

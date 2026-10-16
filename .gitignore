@@ -1,6 +1,7 @@
 .pio
 .vscode
 .env
+__pycache__
 env/env_config.h
 build
 managed_components
